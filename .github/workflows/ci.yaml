@@ -1,0 +1,89 @@
+name: 이전에 쓰던 레포 기준이라 수정 하셔야 해요
+
+on:
+  push:
+    branches:
+      - main
+
+env:
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+  AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+  ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
+  IMAGE_TAG: ${{ github.sha }}
+
+jobs:
+  build-push-and-update:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout app repo
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Login to ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build & Push user-service
+        run: |
+          docker build -t $ECR_REGISTRY/user-service:${IMAGE_TAG} ./app/user-service
+          docker push $ECR_REGISTRY/user-service:${IMAGE_TAG}
+
+      - name: Build & Push order-service
+        run: |
+          docker build -t $ECR_REGISTRY/order-service:${IMAGE_TAG} ./app/order-service
+          docker push $ECR_REGISTRY/order-service:${IMAGE_TAG}
+
+      - name: Build & Push product-service
+        run: |
+          docker build -t $ECR_REGISTRY/product-service:${IMAGE_TAG} ./app/product-service
+          docker push $ECR_REGISTRY/product-service:${IMAGE_TAG}
+
+      # --- 여기부터 manifests repo 업데이트 ---
+      - name: Checkout manifests repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ secrets.MANIFEST_REPO }}
+          token: ${{ secrets.GH_PAT }}
+          path: manifests
+
+      - name: Install yq
+        run: |
+          sudo wget -qO /usr/local/bin/yq \
+            https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+          yq --version
+
+      - name: Update images in manifests repo (base/deployment)
+        env:
+          USER_IMAGE: ${{ env.ECR_REGISTRY }}/user-service:${{ env.IMAGE_TAG }}
+          ORDER_IMAGE: ${{ env.ECR_REGISTRY }}/order-service:${{ env.IMAGE_TAG }}
+          PRODUCT_IMAGE: ${{ env.ECR_REGISTRY }}/product-service:${{ env.IMAGE_TAG }}
+        run: |
+          cd manifests
+
+          # 파일 경로는 네 repo 구조 기준(스샷)으로 base/deployment/*
+          yq -i '.spec.template.spec.containers[0].image = strenv(USER_IMAGE)' base/deployment/user-deployment.yaml
+          yq -i '.spec.template.spec.containers[0].image = strenv(ORDER_IMAGE)' base/deployment/order-deployment.yaml
+          yq -i '.spec.template.spec.containers[0].image = strenv(PRODUCT_IMAGE)' base/deployment/product-deployment.yaml
+
+          echo "Updated images:"
+          grep -R "image:" -n base/deployment/*.yaml
+
+      - name: Commit & push manifests changes
+        run: |
+          cd manifests
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+
+          git add base/deployment/*.yaml
+
+          # 변경 없으면 커밋 스킵
+          git commit -m "chore: deploy ${IMAGE_TAG}" || echo "No changes to commit"
+          git push
+
