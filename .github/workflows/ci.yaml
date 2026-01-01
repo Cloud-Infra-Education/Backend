@@ -67,7 +67,7 @@ jobs:
         run: |
           cd manifests
 
-          # 파일 경로는 네 repo 구조 기준(스샷)으로 base/deployment/*
+          
           yq -i '.spec.template.spec.containers[0].image = strenv(USER_IMAGE)' base/deployment/user-deployment.yaml
           yq -i '.spec.template.spec.containers[0].image = strenv(ORDER_IMAGE)' base/deployment/order-deployment.yaml
           yq -i '.spec.template.spec.containers[0].image = strenv(PRODUCT_IMAGE)' base/deployment/product-deployment.yaml
