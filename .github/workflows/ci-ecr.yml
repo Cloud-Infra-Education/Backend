@@ -1,9 +1,10 @@
-name: 이전에 쓰던 레포 기준이라 수정 하셔야 해요
+name: CI - 백엔드 API 배포
 
 on:
   push:
     branches:
       - main
+  workflow_dispatch:
 
 env:
   AWS_REGION: ${{ secrets.AWS_REGION }}
@@ -67,7 +68,6 @@ jobs:
         run: |
           cd manifests
 
-          
           yq -i '.spec.template.spec.containers[0].image = strenv(USER_IMAGE)' base/deployment/user-deployment.yaml
           yq -i '.spec.template.spec.containers[0].image = strenv(ORDER_IMAGE)' base/deployment/order-deployment.yaml
           yq -i '.spec.template.spec.containers[0].image = strenv(PRODUCT_IMAGE)' base/deployment/product-deployment.yaml
