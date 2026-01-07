@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - "feat/#*"
   workflow_dispatch:
 
 env:
@@ -30,23 +31,74 @@ jobs:
       - name: Login to ECR
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Build & Push user-service
-        run: |
-          docker build -t $ECR_REGISTRY/user-service:${IMAGE_TAG} ./app/user-service
-          docker push $ECR_REGISTRY/user-service:${IMAGE_TAG}
+      - name: Check user-service repo
+        id: check-user
+        continue-on-error: true
+        run: aws ecr describe-repositories --repository-names user-service > /dev/null 2>&1 && echo "exists=true" >> $GITHUB_OUTPUT || echo "exists=false" >> $GITHUB_OUTPUT
 
-      - name: Build & Push order-service
-        run: |
-          docker build -t $ECR_REGISTRY/order-service:${IMAGE_TAG} ./app/order-service
-          docker push $ECR_REGISTRY/order-service:${IMAGE_TAG}
+      - name: Build (user-service)
+        if: steps.check-user.outputs.exists == 'true'
+        run: docker build -t $ECR_REGISTRY/user-service:${IMAGE_TAG} ./app/user-service
+        
+      - name: Trivy Scan (user-service)
+        if: steps.check-user.outputs.exists == 'true'
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.ECR_REGISTRY }}/user-service:${{ env.IMAGE_TAG }}
+          format: 'table'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '1'
 
-      - name: Build & Push product-service
-        run: |
-          docker build -t $ECR_REGISTRY/product-service:${IMAGE_TAG} ./app/product-service
-          docker push $ECR_REGISTRY/product-service:${IMAGE_TAG}
+      - name: Push (user-service)
+        if: steps.check-user.outputs.exists == 'true'
+        run: docker push $ECR_REGISTRY/user-service:${IMAGE_TAG}
 
-      # --- 여기부터 manifests repo 업데이트 ---
+      - name: Check order-service repo
+        id: check-order
+        continue-on-error: true
+        run: aws ecr describe-repositories --repository-names order-service > /dev/null 2>&1 && echo "exists=true" >> $GITHUB_OUTPUT || echo "exists=false" >> $GITHUB_OUTPUT
+
+      - name: Build (order-service)
+        if: steps.check-order.outputs.exists == 'true'
+        run: docker build -t $ECR_REGISTRY/order-service:${IMAGE_TAG} ./app/order-service
+
+      - name: Trivy Scan (order-service)
+        if: steps.check-order.outputs.exists == 'true'
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.ECR_REGISTRY }}/order-service:${{ env.IMAGE_TAG }}
+          format: 'table'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '1'
+
+      - name: Push (order-service)
+        if: steps.check-order.outputs.exists == 'true'
+        run: docker push $ECR_REGISTRY/order-service:${IMAGE_TAG}
+
+      - name: Check product-service repo
+        id: check-product
+        continue-on-error: true
+        run: aws ecr describe-repositories --repository-names product-service > /dev/null 2>&1 && echo "exists=true" >> $GITHUB_OUTPUT || echo "exists=false" >> $GITHUB_OUTPUT
+
+      - name: Build (product-service)
+        if: steps.check-product.outputs.exists == 'true'
+        run: docker build -t $ECR_REGISTRY/product-service:${IMAGE_TAG} ./app/product-service
+
+      - name: Trivy Scan (product-service)
+        if: steps.check-product.outputs.exists == 'true'
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.ECR_REGISTRY }}/product-service:${{ env.IMAGE_TAG }}
+          format: 'table'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '1'
+
+      - name: Push (product-service)
+        if: steps.check-product.outputs.exists == 'true'
+        run: docker push $ECR_REGISTRY/product-service:${IMAGE_TAG}
+
       - name: Checkout manifests repo
+        if: steps.check-user.outputs.exists == 'true' || steps.check-order.outputs.exists == 'true' || steps.check-product.outputs.exists == 'true'
         uses: actions/checkout@v4
         with:
           repository: ${{ secrets.MANIFEST_REPO }}
@@ -54,36 +106,24 @@ jobs:
           path: manifests
 
       - name: Install yq
+        if: steps.check-user.outputs.exists == 'true' || steps.check-order.outputs.exists == 'true' || steps.check-product.outputs.exists == 'true'
         run: |
-          sudo wget -qO /usr/local/bin/yq \
-            https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+          sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
           sudo chmod +x /usr/local/bin/yq
-          yq --version
 
-      - name: Update images in manifests repo (base/deployment)
+      - name: Update images and Push changes
+        if: steps.check-user.outputs.exists == 'true' || steps.check-order.outputs.exists == 'true' || steps.check-product.outputs.exists == 'true'
         env:
           USER_IMAGE: ${{ env.ECR_REGISTRY }}/user-service:${{ env.IMAGE_TAG }}
           ORDER_IMAGE: ${{ env.ECR_REGISTRY }}/order-service:${{ env.IMAGE_TAG }}
           PRODUCT_IMAGE: ${{ env.ECR_REGISTRY }}/product-service:${{ env.IMAGE_TAG }}
         run: |
           cd manifests
-
           yq -i '.spec.template.spec.containers[0].image = strenv(USER_IMAGE)' base/deployment/user-deployment.yaml
           yq -i '.spec.template.spec.containers[0].image = strenv(ORDER_IMAGE)' base/deployment/order-deployment.yaml
           yq -i '.spec.template.spec.containers[0].image = strenv(PRODUCT_IMAGE)' base/deployment/product-deployment.yaml
-
-          echo "Updated images:"
-          grep -R "image:" -n base/deployment/*.yaml
-
-      - name: Commit & push manifests changes
-        run: |
-          cd manifests
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
-
           git add base/deployment/*.yaml
-
-          # 변경 없으면 커밋 스킵
           git commit -m "chore: deploy ${IMAGE_TAG}" || echo "No changes to commit"
           git push
-
