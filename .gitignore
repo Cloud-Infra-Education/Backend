@@ -2,7 +2,10 @@
 __pycache__/
 *.py[codz]
 *$py.class
-
+*.pyc
+test.db
+terraform.tfstate
+.env
 # C extensions
 *.so
 
