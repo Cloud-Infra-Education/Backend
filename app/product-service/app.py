@@ -1,18 +1,12 @@
-from fastapi import FastAPI
+os.path.dirname(os.path.abspath(os.path.dirname(__file__))))
+from common.database import get_db_connection
+from common.logger import get_request_info
 
 app = FastAPI()
 
-@app.get("/")
-def root():
-    return {"ok": True}
+@app.get("/search")
+def search_products(q: str = Query(None, min_length=2)):
+    # 1. 추적 정보 및 리전 가져오기
+    trace_id, region = get_request_info()
 
-@app.get("/products")
-def get_products():
-    return {
-        "service": "product-service",
-        "products": [
-            {"id": "p1", "name": "mouse"},
-            {"id": "p2", "name": "monitor"}
-        ]
-    }
 
