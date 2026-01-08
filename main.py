@@ -14,6 +14,3 @@ app.include_router(video_router)
 from users.database import init_db
 import asyncio
 
-@app.on_event("startup")
-async def startup_event():
-    await init_db()
