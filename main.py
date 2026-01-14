@@ -1,57 +1,63 @@
-# Backend/main.py (최상위 main)
-import logging
+"""
+FastAPI Backend Application
+"""
 from fastapi import FastAPI
-from users.main import router as user_router
-from videos.main import router as video_router
-from app.search.main import router as search_router
-
-# 로깅 설정
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
-)
+from fastapi.middleware.cors import CORSMiddleware
+from app.core.config import settings
+from app.core.database import Base, engine
+from app.api.v1.routes import health, users, auth, contents, content_likes, watch_history, video_assets
 
 app = FastAPI(
-    title="Global Search API",
-    description="RDS Proxy를 통한 글로벌 검색/조회 API",
-    version="1.0.0"
+    title=settings.APP_NAME,
+    version=settings.APP_VERSION,
+    debug=settings.DEBUG
 )
 
-# 라우터 연결
-app.include_router(user_router, prefix="/users")
-app.include_router(video_router, prefix="/videos")
-app.include_router(search_router, prefix="/search", tags=["search"])
+# 데이터베이스 테이블 생성 (개발용)
+# 프로덕션에서는 Alembic 마이그레이션 사용
+# 연결 실패 시에도 애플리케이션은 시작되도록 예외 처리
+@app.on_event("startup")
+async def startup_event():
+    try:
+        Base.metadata.create_all(bind=engine)
+        print("✅ Database tables created successfully")
+    except Exception as e:
+        print(f"⚠️  Database connection failed during startup: {str(e)}")
+        print("   Application will continue, but database features may not work.")
 
-# 루트 경로 추가
+# CORS 설정
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # 프로덕션에서는 특정 도메인으로 제한
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# 라우터 등록
+app.include_router(health.router, prefix="/api/v1", tags=["Health"])
+app.include_router(auth.router, prefix="/api/v1", tags=["Authentication"])
+app.include_router(users.router, prefix="/api/v1", tags=["Users"])
+app.include_router(contents.router, prefix="/api/v1", tags=["Contents"])
+app.include_router(content_likes.router, prefix="/api/v1", tags=["Content Likes"])
+app.include_router(watch_history.router, prefix="/api/v1", tags=["Watch History"])
+app.include_router(video_assets.router, prefix="/api/v1", tags=["Video Assets"])
+
+
 @app.get("/")
 async def root():
-    """
-    API 루트 엔드포인트
-    """
+    """루트 엔드포인트"""
     return {
-        "message": "Global Search API",
-        "version": "1.0.0",
-        "docs": "/docs",
-        "redoc": "/redoc",
-        "endpoints": {
-            "search": "/search/search?q=검색어&limit=10&offset=0",
-            "health": "/search/health"
-        }
+        "message": "Backend API",
+        "version": settings.APP_VERSION
     }
 
-# Backend/main.py
-from users.database import init_db
-import asyncio
 
-# 개발 모드에서만 실행
 if __name__ == "__main__":
     import uvicorn
-    print("=" * 50)
-    print("FastAPI 서버 시작")
-    print("=" * 50)
-    print("서버 주소: http://localhost:8000")
-    print("API 문서: http://localhost:8000/docs")
-    print("ReDoc 문서: http://localhost:8000/redoc")
-    print("=" * 50)
-    uvicorn.run(app, host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run(
+        "main:app",
+        host=settings.HOST,
+        port=settings.PORT,
+        reload=settings.DEBUG
+    )
