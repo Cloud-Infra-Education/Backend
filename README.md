@@ -36,8 +36,7 @@ Backend/
 ├── scripts/               # 유틸리티 스크립트
 ├── main.py                # 애플리케이션 진입점
 ├── requirements.txt       # Python 의존성
-├── Dockerfile             # Docker 이미지 빌드
-└── docker-compose.yml     # Docker Compose 설정
+└── Dockerfile             # Docker 이미지 빌드
 ```
 
 ---
