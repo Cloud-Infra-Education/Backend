@@ -43,58 +43,13 @@ Backend/
 
 ## 시작하기
 
-### 로컬 개발
+Backend API는 Kubernetes 환경에서 실행되며, Terraform을 통해 자동으로 배포됩니다.
 
-1. **가상환경 생성 및 활성화**
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # Windows: venv\Scripts\activate
-   ```
-
-2. **의존성 설치**
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-3. **환경 변수 설정**
-   ```bash
-   cp .env.example .env
-   # .env 파일을 편집하여 필요한 설정 추가
-   ```
-
-4. **서버 실행**
-   ```bash
-   # 방법 1: 스크립트 사용
-   bash scripts/run_server.sh
-   
-   # 방법 2: 직접 실행
-   python main.py
-   
-   # 방법 3: uvicorn 직접 실행
-   uvicorn main:app --reload
-   ```
-
-### Docker 사용
-
-```bash
-# Docker Compose로 실행
-docker-compose up -d
-```
-
-서비스:
-- **Keycloak**: http://localhost:8080 (관리자: admin/admin)
-- **Meilisearch**: http://localhost:7700 (API Key: masterKey123)
-- **Backend API**: http://localhost:8000
+자세한 배포 방법은 [Kubernetes 배포](#kubernetes-배포) 섹션을 참고하세요.
 
 ---
 
 ## API 문서
-
-### 로컬 개발 환경
-
-- Swagger UI: http://localhost:8000/docs
-- ReDoc: http://localhost:8000/redoc
-- OpenAPI JSON: http://localhost:8000/openapi.json
 
 ### 프로덕션 환경 (Kubernetes)
 
@@ -217,6 +172,117 @@ Backend API는 Keycloak에서 발급한 JWT 토큰의 사용자 정보를 데이
 - **회원가입 필수**: JWT 토큰이 발급되었더라도, Backend API의 `users` 테이블에 해당 사용자가 등록되어 있어야 합니다.
 - **Email 기반 매핑**: Keycloak의 `sub` (user ID)가 아닌 `email` 필드를 사용하여 매핑합니다.
 - **자동 처리**: `watch_history`, `content_likes` 등 모든 엔드포인트에서 자동으로 처리됩니다.
+
+---
+
+## S3 영상 파일 관리
+
+### 개요
+
+Backend API는 S3 버킷에 저장된 영상 파일을 관리하고 CloudFront URL을 생성할 수 있습니다.
+
+### 환경 변수 설정
+
+Kubernetes 환경에서 다음 환경 변수가 자동으로 설정됩니다:
+
+- `S3_BUCKET_NAME`: S3 버킷 이름 (예: `y2om-my-origin-bucket-087730891580`)
+- `S3_REGION`: S3 버킷 리전 (기본값: `ap-northeast-2`)
+- `CLOUDFRONT_DOMAIN`: CloudFront 도메인 (예: `www.exampleott.click`)
+
+### S3 접근 권한
+
+Backend API는 IRSA (IAM Roles for Service Accounts)를 통해 S3에 접근합니다:
+- **권한**: `s3:ListBucket`, `s3:GetObject`, `s3:HeadObject`
+- **범위**: 읽기 전용 (영상 파일 조회 및 URL 생성)
+
+### API 엔드포인트
+
+#### 1. S3 영상 파일 목록 조회
+
+**엔드포인트**: `GET /api/v1/contents/{content_id}/video-assets/s3/list`
+
+**Query 파라미터**:
+- `prefix` (선택): S3 경로 prefix (예: `videos/`, `content/1/`)
+- `max_keys` (선택): 최대 반환 개수 (기본값: 1000, 최대: 1000)
+
+**사용 예시**:
+```bash
+# 1. 토큰 발급
+TOKEN=$(curl -s -X POST "https://api.exampleott.click/api/v1/auth/login" \
+  -H "Content-Type: application/json" \
+  -d '{"email": "user@example.com", "password": "password"}' \
+  -k | jq -r '.access_token')
+
+# 2. S3 파일 목록 조회
+curl -H "Authorization: Bearer $TOKEN" \
+  "https://api.exampleott.click/api/v1/contents/1/video-assets/s3/list?prefix=videos/" \
+  -k | jq .
+```
+
+**응답 예시**:
+```json
+[
+  {
+    "key": "327101_tiny.mp4",
+    "size": 1243830,
+    "last_modified": "2026-01-15T11:34:14",
+    "url": "https://www.exampleott.click/327101_tiny.mp4"
+  }
+]
+```
+
+#### 2. S3 파일 CloudFront URL 조회
+
+**엔드포인트**: `GET /api/v1/contents/{content_id}/video-assets/s3/url/{s3_key}`
+
+**Path 파라미터**:
+- `content_id`: 컨텐츠 ID
+- `s3_key`: S3 객체 키 (예: `327101_tiny.mp4`, `videos/content1.mp4`)
+
+**사용 예시**:
+```bash
+# 특정 파일의 CloudFront URL 조회
+curl -H "Authorization: Bearer $TOKEN" \
+  "https://api.exampleott.click/api/v1/contents/1/video-assets/s3/url/327101_tiny.mp4" \
+  -k | jq .
+```
+
+**응답 예시**:
+```json
+{
+  "key": "327101_tiny.mp4",
+  "size": 1243830,
+  "content_type": "video/mp4",
+  "last_modified": "2026-01-15T11:34:14",
+  "url": "https://www.exampleott.click/327101_tiny.mp4"
+}
+```
+
+### CloudFront 직접 접근
+
+S3에 저장된 영상 파일은 CloudFront를 통해 직접 접근할 수 있습니다:
+
+```
+https://www.exampleott.click/{s3_key}
+```
+
+**예시**:
+- 파일: `327101_tiny.mp4` (S3 버킷 루트)
+- URL: `https://www.exampleott.click/327101_tiny.mp4`
+
+### 지원되는 영상 파일 형식
+
+다음 확장자를 가진 파일만 조회됩니다:
+- `.mp4`, `.avi`, `.mov`, `.mkv`, `.webm`, `.m4v`, `.flv`
+
+### Swagger UI를 통한 테스트
+
+1. `https://api.exampleott.click/docs` 접속
+2. `/api/v1/auth/login` 엔드포인트에서 로그인하여 토큰 발급
+3. 우측 상단 "Authorize" 버튼 클릭하여 토큰 입력
+4. `/api/v1/contents/{content_id}/video-assets/s3/list` 또는 `/api/v1/contents/{content_id}/video-assets/s3/url/{s3_key}` 엔드포인트 선택
+5. "Try it out" 클릭
+6. 파라미터 입력 후 "Execute" 클릭
 
 ---
 
@@ -364,6 +430,7 @@ kubectl get ingress -n formation-lap msa-ingress
 - `JWT_ALGORITHM`
 - `MEILISEARCH_URL`
 - `DB_PORT`, `DB_NAME`
+- `S3_BUCKET_NAME`, `S3_REGION`, `CLOUDFRONT_DOMAIN`
 
 #### Secret (비밀 정보)
 - `KEYCLOAK_CLIENT_SECRET`
@@ -529,56 +596,37 @@ JWT 토큰은 유효하지만 데이터베이스에 사용자가 등록되어 �
 
 ## 환경 변수
 
-### 로컬 개발 환경 예시
-
-```env
-# Application
-APP_NAME=Backend API
-APP_VERSION=1.0.0
-DEBUG=false
-
-# Server
-HOST=0.0.0.0
-PORT=8000
-
-# Keycloak (인증 서버)
-KEYCLOAK_URL=http://localhost:8080
-KEYCLOAK_REALM=formation-lap
-KEYCLOAK_CLIENT_ID=backend-client
-KEYCLOAK_CLIENT_SECRET=
-
-# Keycloak Admin API
-KEYCLOAK_ADMIN_USERNAME=admin
-KEYCLOAK_ADMIN_PASSWORD=admin
-
-# JWT
-JWT_ALGORITHM=RS256
-
-# Meilisearch (검색 서버)
-MEILISEARCH_URL=http://localhost:7700
-MEILISEARCH_API_KEY=masterKey1234567890
-
-# Database
-DATABASE_URL=mysql+pymysql://user:password@localhost:3306/dbname?charset=utf8mb4
-```
-
 ### 프로덕션 환경 (Kubernetes)
 
 환경 변수는 Kubernetes ConfigMap과 Secret을 통해 관리됩니다. 자세한 내용은 Terraform 설정을 참고하세요.
+
+#### ConfigMap (공개 설정)
+- `APP_NAME`, `APP_VERSION`, `DEBUG`, `ENVIRONMENT`
+- `HOST`, `PORT`
+- `KEYCLOAK_URL`, `KEYCLOAK_REALM`, `KEYCLOAK_CLIENT_ID`
+- `JWT_ALGORITHM`
+- `MEILISEARCH_URL`
+- `DB_PORT`, `DB_NAME`
+- `S3_BUCKET_NAME`, `S3_REGION`, `CLOUDFRONT_DOMAIN`
+
+#### Secret (비밀 정보)
+- `KEYCLOAK_CLIENT_SECRET`
+- `KEYCLOAK_ADMIN_USERNAME`, `KEYCLOAK_ADMIN_PASSWORD`
+- `MEILISEARCH_API_KEY`
+- `DATABASE_URL` (RDS Proxy endpoint 포함)
 
 ---
 
 ## Keycloak 설정
 
-### 로컬 개발 환경
+Keycloak은 Kubernetes 환경에서 자동으로 배포되며, Terraform을 통해 설정됩니다.
 
-Docker Compose를 사용하는 경우, Keycloak이 자동으로 시작됩니다.
+### 프로덕션 환경 설정
 
-1. **Keycloak Admin Console 접속**: http://localhost:8080
-2. **관리자 로그인**: Username: `admin`, Password: `admin`
-3. **Realm 생성**: `formation-lap` realm 생성
-4. **Client 생성**: `backend-client` 생성 (Public client)
-5. **사용자 생성**: 테스트용 사용자 생성
+- **Keycloak URL**: `https://api.exampleott.click/keycloak`
+- **Realm**: `formation-lap`
+- **Client ID**: `backend-client`
+- **Admin Console**: `https://api.exampleott.click/keycloak/admin`
 
 자세한 설정 방법은 Keycloak 공식 문서를 참고하세요.
 
