@@ -4,14 +4,15 @@ uvicorn[standard]==0.24.0
 pydantic==2.5.0
 pydantic-settings==2.1.0
 email-validator==2.1.0
+starlette>=0.40.0  # CVE-2024-47874 수정
 
 # JWT
-python-jose[cryptography]==3.3.0
+python-jose[cryptography]>=3.4.0  # CVE-2024-33663 수정
 
 # Database
 sqlalchemy==2.0.23
 pymysql==1.1.0
-cryptography==41.0.7
+cryptography>=42.0.0  # CVE-2024-26130 수정
 alembic==1.12.1
 # SQLite (로컬 테스트용)
 
