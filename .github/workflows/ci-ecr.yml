@@ -75,4 +75,4 @@ jobs:
 
       - name: Push (video-service)
         if: steps.check-video.outputs.exists == 'true'
-        run: docker push $ECR_REGISTRY/video-service:${IMAGE_TAG}}
+        run: docker push $ECR_REGISTRY/video-service:${IMAGE_TAG}
