@@ -29,4 +29,3 @@ httpx==0.25.2
 # Environment
 python-dotenv==1.0.0
 setuptools>=79.0.1  # jaraco.context 6.1.0+ 포함
-ecdsa>=0.19.2  # CVE-2024-23342 수정 (python-jose와 호환)
