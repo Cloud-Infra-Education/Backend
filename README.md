@@ -553,3 +553,27 @@ kubectl port-forward svc/backend-api-service 8000:8000 -n formation-lap
 
 - `app/api/v1/routes/auth.py`: 회원가입/로그인 엔드포인트
 - `Dockerfile`: curl 패키지 포함
+
+## Keycloak 사용자 자동 생성
+
+회원가입 및 로그인 시 Keycloak에 사용자가 자동으로 생성됩니다.
+
+### 기능
+
+- **회원가입 시**: 데이터베이스에 사용자 생성 후 Keycloak에도 자동 생성
+- **로그인 시**: Keycloak에 사용자가 없으면 자동 생성 후 토큰 발급
+
+### 구현 세부사항
+
+- `create_keycloak_user()` 함수: Keycloak Admin API를 사용하여 사용자 생성
+- `subprocess`와 `curl`을 사용하여 Keycloak Admin API 호출
+- 환경 변수에서 Keycloak 설정 읽기:
+  - `KEYCLOAK_URL`: Keycloak 서버 URL
+  - `KEYCLOAK_REALM`: Keycloak Realm 이름
+  - `KEYCLOAK_ADMIN_USERNAME`: Admin 사용자명
+  - `KEYCLOAK_ADMIN_PASSWORD`: Admin 비밀번호
+
+### 관련 파일
+
+- `app/api/v1/routes/auth.py`: 회원가입/로그인 엔드포인트
+- `Dockerfile`: curl 패키지 포함
