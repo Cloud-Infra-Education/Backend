@@ -75,6 +75,7 @@ jobs:
           severity: 'CRITICAL,HIGH'
           exit-code: '1'
           scanners: 'vuln'
+          trivyignores: '.trivyignore'
 
       - name: Push (video-service)
         if: steps.check-video.outputs.exists == 'true'
