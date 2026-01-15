@@ -20,18 +20,24 @@ security = HTTPBearer(
 _cached_public_key: Optional[str] = None
 
 
-async def _get_public_key() -> str:
+async def _get_public_key(kid: Optional[str] = None) -> str:
     """
     Keycloak에서 공개 키를 가져옵니다 (캐시 사용)
+    
+    Args:
+        kid: Key ID (JWT 헤더에서 추출)
     
     Returns:
         PEM 형식의 공개 키
     """
     global _cached_public_key
     
-    # 캐시된 키가 있으면 사용
-    if _cached_public_key:
-        return _cached_public_key
+    # kid가 제공된 경우 캐시를 사용하지 않고 항상 최신 키 가져오기
+    # (Keycloak이 키를 로테이션할 수 있으므로)
+    if not kid:
+        # 캐시된 키가 있으면 사용
+        if _cached_public_key:
+            return _cached_public_key
     
     # .env에 설정된 키가 있고 유효하면 사용 (선택사항)
     if settings.JWT_PUBLIC_KEY and settings.JWT_PUBLIC_KEY.strip():
@@ -42,9 +48,10 @@ async def _get_public_key() -> str:
     
     # Keycloak에서 동적으로 가져오기 (기본 방법)
     try:
-        public_key = await auth_service.get_public_key()
+        public_key = await auth_service.get_public_key(kid)
         if public_key:
-            _cached_public_key = public_key
+            if not kid:
+                _cached_public_key = public_key
             return public_key
     except Exception as e:
         raise HTTPException(
@@ -74,30 +81,43 @@ async def verify_token(credentials: HTTPAuthorizationCredentials) -> dict:
     """
     token = credentials.credentials
     
-    # 공개 키 가져오기
-    public_key = await _get_public_key()
+    # JWT 헤더에서 kid 추출
+    try:
+        unverified_header = jwt.get_unverified_header(token)
+        kid = unverified_header.get('kid')
+    except Exception:
+        kid = None
+    
+    # 공개 키 가져오기 (kid 사용)
+    public_key = await _get_public_key(kid)
+    
+    # Issuer 확인
+    expected_issuer = f"{auth_service.keycloak_url}/realms/{auth_service.realm}"
     
     try:
-        # JWT 토큰 검증
+        # JWT 토큰 검증 (audience 검증 비활성화 - Keycloak의 account audience 사용)
         payload = jwt.decode(
             token,
             public_key,
             algorithms=[settings.JWT_ALGORITHM],
-            options={"verify_signature": True, "verify_exp": True}
+            options={"verify_signature": True, "verify_exp": True, "verify_iss": True, "verify_aud": False},
+            issuer=expected_issuer
         )
         return payload
     except JWTError as e:
-        # 서명 검증 실패 시 캐시 초기화하고 재시도
+        # 서명 검증 실패 시 캐시 초기화하고 재시도 (다른 kid로)
         global _cached_public_key
-        if "Signature verification failed" in str(e):
+        if "Signature verification failed" in str(e) or "Invalid issuer" in str(e):
             _cached_public_key = None
             try:
-                public_key = await _get_public_key()
+                # kid 없이 다시 시도 (서명용 키 자동 선택)
+                public_key = await _get_public_key(None)
                 payload = jwt.decode(
                     token,
                     public_key,
                     algorithms=[settings.JWT_ALGORITHM],
-                    options={"verify_signature": True, "verify_exp": True}
+                    options={"verify_signature": True, "verify_exp": True, "verify_iss": True, "verify_aud": False},
+                    issuer=expected_issuer
                 )
                 return payload
             except JWTError:

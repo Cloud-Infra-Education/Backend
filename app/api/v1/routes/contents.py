@@ -10,6 +10,7 @@ from app.core.security import security, verify_token
 from fastapi.security import HTTPAuthorizationCredentials
 from app.models.content import Content
 from app.schemas.content import ContentCreate, ContentUpdate, ContentResponse
+from app.services.search import search_service
 
 router = APIRouter(prefix="/contents", tags=["Contents"])
 
@@ -37,6 +38,18 @@ async def create_content(
     db.add(db_content)
     db.commit()
     db.refresh(db_content)
+    
+    # Meilisearch 인덱스에 동기화
+    if search_service.is_available():
+        search_doc = {
+            "id": db_content.id,
+            "title": db_content.title,
+            "description": db_content.description or "",
+            "age_rating": db_content.age_rating or "",
+            "like_count": db_content.like_count
+        }
+        await search_service.sync_content(search_doc)
+    
     return db_content
 
 
@@ -90,6 +103,18 @@ async def update_content(
     
     db.commit()
     db.refresh(content)
+    
+    # Meilisearch 인덱스에 동기화
+    if search_service.is_available():
+        search_doc = {
+            "id": content.id,
+            "title": content.title,
+            "description": content.description or "",
+            "age_rating": content.age_rating or "",
+            "like_count": content.like_count
+        }
+        await search_service.sync_content(search_doc)
+    
     return content
 
 
@@ -109,4 +134,9 @@ async def delete_content(
     
     db.delete(content)
     db.commit()
+    
+    # Meilisearch 인덱스에서 삭제
+    if search_service.is_available():
+        await search_service.delete_content(content_id)
+    
     return None

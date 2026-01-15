@@ -203,9 +203,12 @@ class AuthService:
             print(f"Failed to get user info: {str(e)}")
             return None
     
-    async def get_public_key(self) -> Optional[str]:
+    async def get_public_key(self, kid: Optional[str] = None) -> Optional[str]:
         """
         Keycloak에서 JWT 검증용 공개 키를 가져옵니다.
+        
+        Args:
+            kid: Key ID (JWT 헤더에서 추출). None이면 서명용 키 중 첫 번째 사용
         
         Returns:
             PEM 형식의 공개 키
@@ -222,7 +225,25 @@ class AuthService:
                 )
                 response.raise_for_status()
                 certs = response.json()
-                key = certs['keys'][0]
+                
+                # kid가 제공된 경우 해당 키를 찾고, 없으면 서명용 키 중 첫 번째 사용
+                key = None
+                if kid:
+                    for k in certs['keys']:
+                        if k.get('kid') == kid and k.get('use') == 'sig':
+                            key = k
+                            break
+                
+                # kid가 없거나 찾지 못한 경우 서명용 키 중 첫 번째 사용
+                if not key:
+                    for k in certs['keys']:
+                        if k.get('use') == 'sig':
+                            key = k
+                            break
+                
+                # 여전히 키를 찾지 못한 경우 첫 번째 키 사용 (하위 호환성)
+                if not key:
+                    key = certs['keys'][0]
                 
                 # JWK to PEM 변환
                 from cryptography.hazmat.primitives import serialization

@@ -17,6 +17,8 @@ class UserBase(BaseModel):
 class UserCreate(UserBase):
     """회원가입용 스키마"""
     password: str = Field(..., min_length=8, description="비밀번호 (최소 8자)")
+    first_name: Optional[str] = Field(None, description="이름")
+    last_name: Optional[str] = Field(None, description="성")
 
 
 class UserUpdate(BaseModel):

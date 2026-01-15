@@ -2,7 +2,7 @@
 VideoAssets API endpoints
 영상 파일 정보
 """
-from typing import List
+from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from app.core.database import get_db
@@ -11,6 +11,7 @@ from fastapi.security import HTTPAuthorizationCredentials
 from app.models.video_asset import VideoAsset
 from app.models.content import Content
 from app.schemas.video_asset import VideoAssetCreate, VideoAssetUpdate, VideoAssetResponse
+from app.services.s3_service import s3_service
 
 router = APIRouter(prefix="/contents/{content_id}/video-assets", tags=["Video Assets"])
 
@@ -142,3 +143,58 @@ async def delete_video_asset(
     db.delete(asset)
     db.commit()
     return None
+
+
+@router.get("/s3/list", response_model=List[dict])
+async def list_s3_videos(
+    content_id: int,
+    prefix: Optional[str] = Query(None, description="S3 경로 prefix (예: videos/)"),
+    max_keys: int = Query(1000, ge=1, le=1000, description="최대 반환 개수")
+):
+    """
+    S3 버킷에서 영상 파일 목록 조회
+    
+    S3에 저장된 영상 파일 목록을 가져와서 CloudFront URL과 함께 반환합니다.
+    """
+    if not s3_service.is_available():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="S3 서비스가 사용 불가능합니다. S3_BUCKET_NAME 환경 변수를 확인하세요."
+        )
+    
+    # content_id를 prefix에 포함 (선택사항)
+    if prefix is None:
+        prefix = f"videos/content_{content_id}/"
+    elif not prefix.endswith('/'):
+        prefix = f"{prefix}/"
+    
+    files = s3_service.list_videos(prefix=prefix, max_keys=max_keys)
+    
+    return files
+
+
+@router.get("/s3/url/{s3_key:path}", response_model=dict)
+async def get_s3_video_url(
+    content_id: int,
+    s3_key: str
+):
+    """
+    S3 파일의 CloudFront URL 조회
+    
+    S3 키를 받아서 CloudFront URL을 반환합니다.
+    """
+    if not s3_service.is_available():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="S3 서비스가 사용 불가능합니다."
+        )
+    
+    file_info = s3_service.get_file_info(s3_key)
+    
+    if not file_info:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"S3 파일을 찾을 수 없습니다: {s3_key}"
+        )
+    
+    return file_info

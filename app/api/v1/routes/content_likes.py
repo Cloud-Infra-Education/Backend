@@ -12,6 +12,7 @@ from fastapi.security import HTTPAuthorizationCredentials
 from app.models.content_like import ContentLike
 from app.models.content import Content
 from app.schemas.content_like import ContentLikeResponse
+from app.services.user_service import UserService
 
 router = APIRouter(prefix="/contents/{content_id}/likes", tags=["Content Likes"])
 
@@ -41,15 +42,13 @@ async def like_content(
             detail="Content not found"
         )
     
-    # TODO: Keycloak user_id를 DB user_id로 변환
-    # 현재는 임시로 Keycloak user_id의 해시값을 사용
-    keycloak_user_id = current_user.get("sub")
-    # 실제로는 users 테이블에서 keycloak_user_id로 조회하여 DB user_id를 가져와야 함
-    # 임시 구현: Keycloak user_id를 정수로 변환 시도
-    try:
-        user_id = int(keycloak_user_id.split("-")[-1][:8], 16) if "-" in keycloak_user_id else 1
-    except:
-        user_id = 1  # 기본값
+    # JWT에서 email을 사용하여 DB user_id 가져오기
+    user_id = UserService.get_user_id_from_jwt(db, current_user)
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found in database. Please register first."
+        )
     
     # 이미 좋아요한 경우 확인
     existing_like = db.query(ContentLike).filter(
@@ -91,11 +90,13 @@ async def unlike_content(
     current_user = Depends(get_current_user)
 ):
     """컨텐츠 좋아요 취소"""
-    keycloak_user_id = current_user.get("sub")
-    try:
-        user_id = int(keycloak_user_id.split("-")[-1][:8], 16) if "-" in keycloak_user_id else 1
-    except:
-        user_id = 1
+    # JWT에서 email을 사용하여 DB user_id 가져오기
+    user_id = UserService.get_user_id_from_jwt(db, current_user)
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found in database. Please register first."
+        )
     
     like = db.query(ContentLike).filter(
         ContentLike.user_id == user_id,

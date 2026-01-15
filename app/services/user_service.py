@@ -2,6 +2,7 @@
 User service
 사용자 관련 비즈니스 로직
 """
+from typing import Optional
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from fastapi import HTTPException, status
@@ -29,6 +30,38 @@ class UserService:
         return pwd_context.verify(plain_password, hashed_password)
     
     @staticmethod
+    def get_user_by_email(db: Session, email: str) -> Optional[User]:
+        """이메일로 사용자 조회"""
+        return db.query(User).filter(User.email == email).first()
+    
+    @staticmethod
+    def get_user_id_from_jwt(db: Session, jwt_payload: dict) -> Optional[int]:
+        """
+        JWT 토큰 페이로드에서 DB user_id 가져오기
+        
+        JWT 토큰의 email 필드를 사용하여 DB users 테이블에서
+        해당 사용자의 id를 조회합니다.
+        
+        Args:
+            db: 데이터베이스 세션
+            jwt_payload: JWT 토큰에서 디코딩된 페이로드 (verify_token의 반환값)
+        
+        Returns:
+            DB user_id (없으면 None)
+        """
+        # JWT에서 email 추출
+        email = jwt_payload.get("email")
+        if not email:
+            return None
+        
+        # DB에서 email로 사용자 조회
+        user = UserService.get_user_by_email(db, email)
+        if not user:
+            return None
+        
+        return user.id
+    
+    @staticmethod
     async def create_user(db: Session, user_data: UserCreate) -> User:
         """사용자 생성"""
         # 이메일 중복 확인
@@ -39,15 +72,13 @@ class UserService:
                 detail="Email already registered"
             )
         
-        # Keycloak에 사용자 생성
+        # Keycloak에 사용자 생성 (선택적 - 실패해도 계속 진행)
         keycloak_user_id = None
         try:
             keycloak_user_id = await UserService._create_keycloak_user(user_data)
         except Exception as e:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Failed to create user in Keycloak: {str(e)}"
-            )
+            # Keycloak이 없거나 접근 불가능한 경우 경고만 출력하고 계속 진행
+            print(f"⚠️  Keycloak 사용자 생성 실패 (무시하고 계속 진행): {str(e)}")
         
         # 데이터베이스에 사용자 생성
         hashed_password = UserService.hash_password(user_data.password)
@@ -67,7 +98,10 @@ class UserService:
             db.rollback()
             # Keycloak 사용자 삭제 시도
             if keycloak_user_id:
-                await UserService._delete_keycloak_user(keycloak_user_id)
+                try:
+                    await UserService._delete_keycloak_user(keycloak_user_id)
+                except Exception:
+                    pass  # 삭제 실패는 무시
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Failed to create user"
@@ -87,13 +121,19 @@ class UserService:
             "username": user_data.email,
             "email": user_data.email,
             "enabled": True,
-            "emailVerified": False,
+            "emailVerified": True,  # 회원가입 시 이메일 인증 완료로 설정
             "credentials": [{
                 "type": "password",
                 "value": user_data.password,
                 "temporary": False
             }]
         }
+        
+        # firstName과 lastName 추가 (Keycloak에서 필요)
+        if user_data.first_name:
+            user_payload["firstName"] = user_data.first_name
+        if user_data.last_name:
+            user_payload["lastName"] = user_data.last_name
         
         async with httpx.AsyncClient() as client:
             response = await client.post(
@@ -135,12 +175,7 @@ class UserService:
                 pass  # 삭제 실패는 무시
     
     @staticmethod
-    def get_user_by_email(db: Session, email: str) -> User | None:
-        """이메일로 사용자 조회"""
-        return db.query(User).filter(User.email == email).first()
-    
-    @staticmethod
-    def get_user_by_id(db: Session, user_id: int) -> User | None:
+    def get_user_by_id(db: Session, user_id: int) -> Optional[User]:
         """ID로 사용자 조회"""
         return db.query(User).filter(User.id == user_id).first()
     

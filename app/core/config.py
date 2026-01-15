@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     APP_NAME: str = "Backend API"
     APP_VERSION: str = "1.0.0"
     DEBUG: bool = False
+    ENVIRONMENT: Optional[str] = None
     
     # Server
     HOST: str = "0.0.0.0"
@@ -43,9 +44,15 @@ class Settings(BaseSettings):
     DB_PASSWORD: Optional[str] = None
     DB_NAME: Optional[str] = None
     
+    # S3 & CloudFront
+    S3_BUCKET_NAME: Optional[str] = None
+    S3_REGION: str = "ap-northeast-2"
+    CLOUDFRONT_DOMAIN: Optional[str] = None  # 예: www.exampleott.click
+    
     class Config:
         env_file = ".env"
         case_sensitive = True
+        extra = "ignore"  # .env 파일의 추가 필드 무시
 
 
 settings = Settings()

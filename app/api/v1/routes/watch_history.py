@@ -11,6 +11,7 @@ from fastapi.security import HTTPAuthorizationCredentials
 from app.models.watch_history import WatchHistory
 from app.models.content import Content
 from app.schemas.watch_history import WatchHistoryCreate, WatchHistoryUpdate, WatchHistoryResponse
+from app.services.user_service import UserService
 
 router = APIRouter(prefix="/watch-history", tags=["Watch History"])
 
@@ -38,11 +39,13 @@ async def create_watch_history(
             detail="Content not found"
         )
     
-    keycloak_user_id = current_user.get("sub")
-    try:
-        user_id = int(keycloak_user_id.split("-")[-1][:8], 16) if "-" in keycloak_user_id else 1
-    except:
-        user_id = 1
+    # JWT에서 email을 사용하여 DB user_id 가져오기
+    user_id = UserService.get_user_id_from_jwt(db, current_user)
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found in database. Please register first."
+        )
     
     # 기존 시청기록 확인
     existing_history = db.query(WatchHistory).filter(
@@ -77,15 +80,17 @@ async def get_watch_history(
     current_user = Depends(get_current_user)
 ):
     """사용자의 시청기록 목록 조회"""
-    keycloak_user_id = current_user.get("sub")
-    try:
-        user_id = int(keycloak_user_id.split("-")[-1][:8], 16) if "-" in keycloak_user_id else 1
-    except:
-        user_id = 1
+    # JWT에서 email을 사용하여 DB user_id 가져오기
+    user_id = UserService.get_user_id_from_jwt(db, current_user)
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found in database. Please register first."
+        )
     
     histories = db.query(WatchHistory).filter(
         WatchHistory.user_id == user_id
-    ).offset(skip).limit(limit).order_by(WatchHistory.updated_at.desc()).all()
+    ).order_by(WatchHistory.updated_at.desc()).offset(skip).limit(limit).all()
     
     return histories
 
@@ -97,11 +102,13 @@ async def get_watch_history_by_content(
     current_user = Depends(get_current_user)
 ):
     """특정 컨텐츠의 시청기록 조회"""
-    keycloak_user_id = current_user.get("sub")
-    try:
-        user_id = int(keycloak_user_id.split("-")[-1][:8], 16) if "-" in keycloak_user_id else 1
-    except:
-        user_id = 1
+    # JWT에서 email을 사용하여 DB user_id 가져오기
+    user_id = UserService.get_user_id_from_jwt(db, current_user)
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found in database. Please register first."
+        )
     
     history = db.query(WatchHistory).filter(
         WatchHistory.user_id == user_id,
@@ -125,11 +132,13 @@ async def update_watch_history(
     current_user = Depends(get_current_user)
 ):
     """시청기록 수정"""
-    keycloak_user_id = current_user.get("sub")
-    try:
-        user_id = int(keycloak_user_id.split("-")[-1][:8], 16) if "-" in keycloak_user_id else 1
-    except:
-        user_id = 1
+    # JWT에서 email을 사용하여 DB user_id 가져오기
+    user_id = UserService.get_user_id_from_jwt(db, current_user)
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found in database. Please register first."
+        )
     
     history = db.query(WatchHistory).filter(
         WatchHistory.user_id == user_id,
@@ -155,11 +164,13 @@ async def delete_watch_history(
     current_user = Depends(get_current_user)
 ):
     """시청기록 삭제"""
-    keycloak_user_id = current_user.get("sub")
-    try:
-        user_id = int(keycloak_user_id.split("-")[-1][:8], 16) if "-" in keycloak_user_id else 1
-    except:
-        user_id = 1
+    # JWT에서 email을 사용하여 DB user_id 가져오기
+    user_id = UserService.get_user_id_from_jwt(db, current_user)
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found in database. Please register first."
+        )
     
     history = db.query(WatchHistory).filter(
         WatchHistory.user_id == user_id,

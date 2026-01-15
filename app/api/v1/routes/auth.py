@@ -40,9 +40,16 @@ async def register(user_data: UserCreate, db: Session = Depends(get_db)):
     except HTTPException:
         raise
     except Exception as e:
+        error_msg = str(e)
+        # DB 연결 오류 감지
+        if "timeout" in error_msg.lower() or "connection" in error_msg.lower() or "connect" in error_msg.lower():
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=f"Database connection failed: {error_msg}"
+            )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Registration failed: {str(e)}"
+            detail=f"Registration failed: {error_msg}"
         )
 
 
@@ -58,19 +65,28 @@ async def login(credentials: UserLogin, db: Session = Depends(get_db)):
     Returns:
         JWT 액세스 토큰
     """
-    # 데이터베이스에서 사용자 조회
-    user = user_service.get_user_by_email(db, credentials.email)
-    if not user:
+    # 데이터베이스에서 사용자 조회 (타임아웃 처리)
+    try:
+        user = user_service.get_user_by_email(db, credentials.email)
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid email or password"
+            )
+        
+        # 비밀번호 검증
+        if not user_service.verify_password(credentials.password, user.password_hash):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid email or password"
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        # DB 연결 오류 등 기타 예외 처리
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid email or password"
-        )
-    
-    # 비밀번호 검증
-    if not user_service.verify_password(credentials.password, user.password_hash):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid email or password"
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Database connection failed: {str(e)}"
         )
     
     # Keycloak에서 토큰 발급
