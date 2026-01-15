@@ -8,7 +8,6 @@ starlette>=0.40.0  # CVE-2024-47874 수정
 
 # JWT
 python-jose[cryptography]>=3.4.0  # CVE-2024-33663 수정
-ecdsa>=0.19.2  # CVE-2024-23342 수정 (Minerva attack)
 
 # Database
 sqlalchemy==2.0.23
@@ -29,4 +28,3 @@ httpx==0.25.2
 
 # Environment
 python-dotenv==1.0.0
-jaraco.context>=6.1.0  # GHSA-58pv-8j8x-9vj2 수정 (Path Traversal)
