@@ -7,9 +7,10 @@ FastAPI 기반 Backend 애플리케이션
 2. [시작하기](#시작하기)
 3. [API 문서](#api-문서)
 4. [JWT 토큰 발급 및 사용](#jwt-토큰-발급-및-사용)
-5. [Meilisearch 검색 기능](#meilisearch-검색-기능)
-6. [Kubernetes 배포](#kubernetes-배포)
-7. [테스트 가이드](#테스트-가이드)
+5. [S3 영상 파일 관리](#s3-영상-파일-관리)
+6. [Meilisearch 검색 기능](#meilisearch-검색-기능)
+7. [Kubernetes 배포](#kubernetes-배포)
+8. [테스트 가이드](#테스트-가이드)
 
 ---
 
