@@ -554,10 +554,6 @@ kubectl port-forward svc/backend-api-service 8000:8000 -n formation-lap
 - `app/api/v1/routes/auth.py`: 회원가입/로그인 엔드포인트
 - `Dockerfile`: curl 패키지 포함
 
-## Keycloak 사용자 자동 생성
-
-회원가입 및 로그인 시 Keycloak에 사용자가 자동으로 생성됩니다.
-
 ### 기능
 
 - **회원가입 시**: 데이터베이스에 사용자 생성 후 Keycloak에도 자동 생성
