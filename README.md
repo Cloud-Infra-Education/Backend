@@ -102,8 +102,8 @@ docker run -p 8000:8000 --env-file .env backend-api
 
 프로덕션 환경에서는 다음 URL로 접근할 수 있습니다:
 
-- Swagger UI: `https://api.matchacake.click/docs`
-- OpenAPI JSON: `https://api.matchacake.click/api/openapi.json`
+- Swagger UI: `https://api.exampleott.click/api/docs`
+- OpenAPI JSON: `https://api.exampleott.click/api/openapi.json`
 
 ### Swagger UI 설정
 
@@ -256,83 +256,150 @@ Backend API에서 Keycloak Admin API를 사용하려면 master realm에 admin �
 
 **⚠️ 중요:** Keycloak 26.x 버전에서는 "Condition - user configured"가 First name과 Last name이 설정되어 있는지 확인합니다. 이 필드들이 비어있으면 "Account is not fully set up" 오류가 발생할 수 있습니다!
 
-#### 7. JWT 토큰 발급 테스트
+#### 7. 테스트 사용자로 로그인 테스트
+
+Backend API를 통해 로그인하여 JWT 토큰을 발급받을 수 있습니다:
 
 ```bash
-# Public Client (권장)
-curl -X POST "http://localhost:8080/realms/my-realm/protocol/openid-connect/token" \
-  -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "client_id=backend-client" \
-  -d "grant_type=password" \
-  -d "username=testuser" \
-  -d "password=testuser"
+curl -X POST http://localhost:8000/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "test@example.com",
+    "password": "testuser"
+  }' | jq .
 ```
 
 성공 응답:
 ```json
 {
   "access_token": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "expires_in": 300,
-  "refresh_token": "...",
-  "token_type": "Bearer"
+  "token_type": "bearer",
+  "expires_in": 300
 }
 ```
+
+## JWT 토큰 발급 및 사용 가이드
 
 ### 프로덕션 환경 (Kubernetes)
 
 #### 현재 설정
-- **Keycloak URL**: `https://api.matchacake.click/keycloak`
-- **Realm**: `formation-lap` (프로덕션용)
+- **Keycloak URL**: `https://api.exampleott.click/keycloak`
+- **Realm**: `formation-lap`
 - **Client ID**: `backend-client`
+- **Backend API URL**: `https://api.exampleott.click/api`
 
-#### 토큰 발급 방법
+### JWT 토큰 발급 방법
 
-**방법 1: Keycloak에 직접 토큰 요청 (권장)**
+#### 방법 1: Backend API를 통한 토큰 발급 (권장)
+
+Backend API의 로그인 엔드포인트를 사용하면 Keycloak과 자동으로 연동되어 토큰을 발급받을 수 있습니다.
+
+**1단계: 회원가입**
 
 ```bash
-curl -X POST https://api.matchacake.click/keycloak/realms/formation-lap/protocol/openid-connect/token \
-  -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "grant_type=password&client_id=backend-client&username=<username>&password=<password>" \
+curl -X POST https://api.exampleott.click/api/v1/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "user@example.com",
+    "password": "your-password",
+    "first_name": "First",
+    "last_name": "Last",
+    "region_code": "KR",
+    "subscription_status": "free"
+  }' \
   -k | jq .
 ```
 
-**방법 2: Backend API를 통한 토큰 발급**
+**2단계: 로그인 및 토큰 발급**
 
 ```bash
-# 1. 회원가입
-curl -X POST https://api.matchacake.click/api/v1/auth/register \
+curl -X POST https://api.exampleott.click/api/v1/auth/login \
   -H "Content-Type: application/json" \
   -d '{
-    "email": "test@example.com",
-    "password": "test12345",
-    "region_code": "KR",
-    "subscription_status": "free"
-  }'
-
-# 2. 로그인 및 토큰 발급
-curl -X POST https://api.matchacake.click/api/v1/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "test@example.com",
-    "password": "test12345"
-  }'
+    "email": "user@example.com",
+    "password": "your-password"
+  }' \
+  -k | jq .
 ```
 
-#### 토큰 사용 방법
+**성공 응답:**
+```json
+{
+  "access_token": "eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiSldUIiwia2lkIiA6ICIweW1sdEltS3dtaVU4RlNlY0dnVFdvcGV5SEhHM0luX085SThmcFZzcWt3In0...",
+  "token_type": "bearer",
+  "expires_in": 300
+}
+```
 
-발급받은 토큰을 사용하여 인증이 필요한 API를 호출할 수 있습니다:
+#### 방법 2: Keycloak에 직접 토큰 요청
+
+Keycloak의 토큰 엔드포인트를 직접 호출할 수도 있습니다.
 
 ```bash
-curl -H "Authorization: Bearer <access_token>" \
-  https://api.matchacake.click/api/v1/users/me
+curl -X POST https://api.exampleott.click/keycloak/realms/formation-lap/protocol/openid-connect/token \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "grant_type=password" \
+  -d "client_id=backend-client" \
+  -d "username=user@example.com" \
+  -d "password=your-password" \
+  -k | jq .
 ```
 
-**Swagger UI에서 테스트:**
-1. `https://api.matchacake.click/docs` 접속
-2. 오른쪽 상단의 "Authorize" 버튼 클릭
+### JWT 토큰 사용 방법
+
+발급받은 토큰을 사용하여 인증이 필요한 API를 호출할 수 있습니다.
+
+#### curl을 사용한 API 호출
+
+```bash
+# 토큰 변수에 저장
+TOKEN="eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiSldUIiwia2lkIiA6ICIweW1sdEltS3dtaVU4RlNlY0dnVFdvcGV5SEhHM0luX085SThmcFZzcWt3In0..."
+
+# 현재 사용자 정보 조회
+curl -H "Authorization: Bearer $TOKEN" \
+  https://api.exampleott.click/api/v1/users/me \
+  -k | jq .
+
+# 시청 기록 조회
+curl -H "Authorization: Bearer $TOKEN" \
+  https://api.exampleott.click/api/v1/watch-history \
+  -k | jq .
+```
+
+#### Swagger UI에서 테스트
+
+1. `https://api.exampleott.click/api/docs` 접속
+2. 오른쪽 상단의 **"Authorize"** 버튼 클릭
 3. 발급받은 토큰을 입력: `Bearer <access_token>`
-4. "Authorize" 클릭
+   - 예: `Bearer eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiSldUIiwia2lkIiA6ICIweW1sdEltS3dtaVU4RlNlY0dnVFdvcGV5SEhHM0luX085SThmcFZzcWt3In0...`
+4. **"Authorize"** 클릭
 5. 인증이 필요한 API 엔드포인트 테스트
+
+### JWT 토큰 검증 작동 방식
+
+Backend API는 다음과 같은 방식으로 JWT 토큰을 검증합니다:
+
+1. **토큰 헤더에서 Key ID (kid) 추출**: JWT 헤더의 `kid` 필드를 읽어 어떤 공개 키를 사용해야 하는지 확인합니다.
+2. **Keycloak JWKS에서 공개 키 가져오기**: Keycloak의 `/realms/{realm}/protocol/openid-connect/certs` 엔드포인트에서 JWKS (JSON Web Key Set)를 가져옵니다.
+3. **올바른 키 선택**: `kid`와 일치하는 서명용 키(`use: sig`)를 선택합니다.
+4. **토큰 검증**: 
+   - 서명 검증 (RS256 알고리즘)
+   - 만료 시간 검증
+   - Issuer 검증 (`https://api.exampleott.click/keycloak/realms/formation-lap`)
+
+### 로컬 개발 환경
+
+로컬 개발 환경에서도 동일한 방식으로 토큰을 발급받을 수 있습니다:
+
+```bash
+# 로그인
+curl -X POST http://localhost:8000/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "test@example.com",
+    "password": "test1234"
+  }' | jq .
+```
 
 ## Kubernetes 배포 가이드
 
@@ -382,7 +449,7 @@ kubectl get ingress -n formation-lap msa-ingress
 #### 3. 접근 경로
 
 **외부 접근:**
-- ALB를 통한 접근: `https://api.matchacake.click/api/v1/health`
+- ALB를 통한 접근: `https://api.exampleott.click/api/v1/health`
 
 **클러스터 내부 접근:**
 - 서비스 이름: `backend-api-service.formation-lap.svc.cluster.local:8000`
@@ -441,237 +508,19 @@ kubectl port-forward svc/keycloak 8080:8080 -n formation-lap
 kubectl port-forward svc/backend-service 8000:8000 -n formation-lap
 ```
 
-## 데이터베이스 연결 문제 해결
-
-### 발견된 문제
-
-**인증 거부 오류 (Access denied)**
-- 에러: `Access denied for user 'admin'@'10.23.12.111' (using password: YES)`
-- 실제 MySQL 연결 테스트에서 발생
-
-### 해결 방법
-
-#### 방법 1: DB 클러스터 비밀번호 리셋 (권장)
-
-DB 클러스터 비밀번호를 Secrets Manager 비밀번호와 일치시킵니다.
-
-```bash
-aws rds modify-db-cluster \
-  --region ap-northeast-2 \
-  --db-cluster-identifier y2om-kor-aurora-mysql \
-  --master-user-password "StrongPassword123!" \
-  --apply-immediately
-```
-
-**주의사항:**
-- 비밀번호 변경 시 클러스터가 잠시 재시작될 수 있음
-- 기존 연결이 끊어질 수 있음
-- 적용 즉시 변경하려면 `--apply-immediately` 플래그 사용
-
-#### 방법 2: Secrets Manager 비밀번호 업데이트
-
-실제 DB 클러스터 비밀번호를 알고 있다면 Secrets Manager를 업데이트합니다.
-
-```bash
-aws secretsmanager put-secret-value \
-  --region ap-northeast-2 \
-  --secret-id formation-lap/db/dev/credentials \
-  --secret-string '{"username":"admin","password":"<actual-db-password>"}'
-```
-
-### 연결 테스트
-
-```bash
-# 파드에서 연결 테스트
-POD_NAME=$(kubectl get pods -n formation-lap -l app=backend-api -o jsonpath='{.items[0].metadata.name}')
-
-kubectl exec -n formation-lap $POD_NAME -- python3 -c "
-import pymysql
-try:
-    conn = pymysql.connect(
-        host='y2om-formation-lap-kor-rds-proxy.proxy-c902seqsaaps.ap-northeast-2.rds.amazonaws.com',
-        port=3306,
-        user='admin',
-        password='StrongPassword123!',
-        database='y2om_db',
-        connect_timeout=10
-    )
-    print('✅ 연결 성공')
-    conn.close()
-except Exception as e:
-    print(f'❌ 연결 실패: {e}')
-"
-```
-
-### 문제 해결 체크리스트
-
-1. **네트워크 연결 확인**
-   - 포트 3306 OPEN 확인
-   - 보안 그룹 규칙 확인
-
-2. **RDS Proxy 상태 확인**
-   - Proxy 상태: `available`
-   - Target 상태: `AVAILABLE`
-
-3. **비밀번호 일치 확인**
-   - terraform.tfvars 비밀번호
-   - Secrets Manager 비밀번호
-   - DB 클러스터 마스터 비밀번호
-
-4. **데이터베이스 존재 확인**
-   - `y2om_db` 데이터베이스가 존재하는지 확인
-   - 없으면 생성 필요
-
-## 문제 해결 가이드
-
-### "Account is not fully set up" 오류
-
-**증상:**
-```json
-{"error": "invalid_grant", "error_description": "Account is not fully set up"}
-```
-
-**원인:**
-- 사용자의 Email 필드가 비어있음
-- Required Actions가 설정되어 있음
-- Email verified가 OFF
-- First name과 Last name이 비어있음 (Keycloak 26.x)
-- Authentication Flow 설정 문제
-
-**해결 방법:**
-
-#### 방법 1: 사용자 설정 확인 및 수정
-
-1. **Keycloak Admin Console에서 사용자 확인**
-   - my-realm → Users → testuser 클릭
-   - Details 탭:
-     - **Email**: 반드시 입력되어 있어야 함 (예: `test@example.com`)
-     - **First name**: `Test` 입력
-     - **Last name**: `User` 입력
-     - **Email verified**: `ON`으로 설정
-     - **Enabled**: `ON`으로 설정
-     - Save 클릭
-   - Required Actions 탭:
-     - 모든 항목이 비어있는지 확인
-     - 체크된 항목이 있으면 모두 제거
-     - Save 클릭
-   - Credentials 탭:
-     - **Temporary**: `OFF`로 설정 확인
-
-#### 방법 2: Authentication Flow 확인 및 수정
-
-**⚠️ 중요: "Direct Grant - Conditional OTP"를 Disabled가 아니라 완전히 삭제해야 합니다!**
-
-1. my-realm → Authentication → Flows
-2. "direct grant" flow 선택
-3. "Direct Grant - Conditional OTP" 행 찾기
-4. 오른쪽의 톱니바퀴 아이콘(설정) 클릭
-5. **"Delete" 클릭** (Disabled로 두면 안 됩니다! 완전히 삭제!)
-6. 확인 메시지에서 "Delete" 클릭
-7. "Save" 클릭
-
-4. "Execution: Password" 확인:
-   - "Required"로 설정되어 있는지 확인
-   - "Alternative"나 "Disabled"가 아닌지 확인
-
-#### 방법 3: 사용자 재생성 (가장 확실한 방법)
-
-모든 설정이 올바른데도 오류가 발생한다면:
-
-1. Users → testuser → **Delete** 클릭
-2. "Create new user" 클릭
-3. Username: `testuser` 입력
-4. **Email**: `test@example.com` 입력 (반드시!)
-5. **First name**: `Test` 입력
-6. **Last name**: `User` 입력
-7. **Email verified**: `ON`으로 설정
-8. **Enabled**: `ON`으로 설정
-9. "Create" 클릭
-10. "Credentials" 탭:
-    - Password: `testuser` 입력
-    - Password confirmation: `testuser` 입력
-    - **Temporary**: `OFF`로 설정 (중요!)
-    - "Set password" 클릭
-11. "Details" 탭:
-    - "Required user actions" 섹션 확인
-    - 모든 항목이 비어있는지 확인
-    - Save 클릭
-
-### "user_not_found" 오류
-
-**원인:** master realm에 admin 사용자가 없습니다.
-
-**해결 방법:**
-위의 "master realm에 admin 사용자 생성" 섹션을 참고하여 생성하세요.
-
-### "invalid_client" 오류
-
-**원인:** backend-client가 제대로 설정되지 않았습니다.
-
-**해결 방법:**
-1. my-realm → Clients → backend-client 확인
-2. Direct access grants: `ON` 확인
-3. Client authentication: `Off` 확인
-
-### Keycloak 접근 실패
-
-1. Keycloak Pod 상태 확인: `kubectl get pods -n formation-lap -l app=keycloak`
-2. Keycloak Service 확인: `kubectl get svc -n formation-lap keycloak-service`
-3. Ingress 확인: `kubectl get ingress -n formation-lap keycloak-ingress`
-4. ALB DNS 확인: `kubectl get ingress -n formation-lap keycloak-ingress -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'`
-
-### Realm 불일치
-
-- Backend API의 `KEYCLOAK_REALM`과 실제 Keycloak realm이 일치하는지 확인
-- ConfigMap 업데이트 후 파드 재시작 필요
-
-### JWT Public Key 오류
-
-**증상:**
-```
-JWKError: Unable to load PEM file
-```
-
-**해결 방법:**
-1. `.env` 파일의 `JWT_PUBLIC_KEY` 확인
-2. Keycloak에서 Public Key 가져오기:
-```bash
-curl http://localhost:8080/realms/my-realm/protocol/openid-connect/certs
-```
-3. Backend API 재시작
 
 ## 포트포워딩 가이드
 
-### 로컬 개발 환경
-
-로컬 개발 환경에서는 포트포워딩이 필요 없습니다! Keycloak은 이미 `http://localhost:8080`에서 접근 가능합니다.
-
 ### Kubernetes 환경에서 포트포워딩
 
-Keycloak이 Kubernetes 클러스터에 배포되어 있는 경우:
+로컬에서 Kubernetes 서비스에 접근하려면 포트포워딩을 사용할 수 있습니다:
 
 ```bash
 # Keycloak 포트포워딩
-kubectl port-forward svc/keycloak 8080:8080 -n formation-lap
+kubectl port-forward svc/keycloak-service 8080:8080 -n formation-lap
 
 # Backend API 포트포워딩
-kubectl port-forward svc/backend-service 8000:8000 -n formation-lap
-
-# Meilisearch 포트포워딩
-kubectl port-forward svc/meilisearch 7700:7700 -n <namespace>
-```
-
-### 접근 확인
-
-```bash
-# Keycloak 확인
-curl http://localhost:8080/health/ready
-
-# Backend API 확인
-curl http://localhost:8000/api/v1/health
-
-# Meilisearch 확인
-curl http://localhost:7700/health
+kubectl port-forward svc/backend-api-service 8000:8000 -n formation-lap
 ```
 
 ## 주의사항
@@ -680,3 +529,27 @@ curl http://localhost:7700/health
 - JWT 검증은 Backend에서 담당합니다
 - 검색 기능은 Meilisearch와 연동됩니다
 - Kubernetes 환경에서는 ConfigMap과 Secret을 사용하여 환경 변수를 관리합니다
+
+## Keycloak 사용자 자동 생성
+
+회원가입 및 로그인 시 Keycloak에 사용자가 자동으로 생성됩니다.
+
+### 기능
+
+- **회원가입 시**: 데이터베이스에 사용자 생성 후 Keycloak에도 자동 생성
+- **로그인 시**: Keycloak에 사용자가 없으면 자동 생성 후 토큰 발급
+
+### 구현 세부사항
+
+- `create_keycloak_user()` 함수: Keycloak Admin API를 사용하여 사용자 생성
+- `subprocess`와 `curl`을 사용하여 Keycloak Admin API 호출
+- 환경 변수에서 Keycloak 설정 읽기:
+  - `KEYCLOAK_URL`: Keycloak 서버 URL
+  - `KEYCLOAK_REALM`: Keycloak Realm 이름
+  - `KEYCLOAK_ADMIN_USERNAME`: Admin 사용자명
+  - `KEYCLOAK_ADMIN_PASSWORD`: Admin 비밀번호
+
+### 관련 파일
+
+- `app/api/v1/routes/auth.py`: 회원가입/로그인 엔드포인트
+- `Dockerfile`: curl 패키지 포함
