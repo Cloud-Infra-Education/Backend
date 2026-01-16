@@ -1,0 +1,5 @@
+boto3
+pymysql
+paramiko<3.0.0
+sshtunnel
+requests
