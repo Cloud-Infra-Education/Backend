@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.database import Base, engine
-from app.api.v1.routes import health, users, auth, contents, content_likes, watch_history, video_assets, search
+from app.api.v1.routes import health, users, auth, contents, content_likes, watch_history, video_assets, search, videos, contents_internal, video_assets_internal
 
 import os
 
@@ -83,10 +83,13 @@ app.include_router(health.router, prefix="/api/v1", tags=["Health"])
 app.include_router(auth.router, prefix="/api/v1", tags=["Authentication"])
 app.include_router(users.router, prefix="/api/v1", tags=["Users"])
 app.include_router(contents.router, prefix="/api/v1", tags=["Contents"])
+app.include_router(contents_internal.router, prefix="/api/v1", tags=["Contents Internal"])
+app.include_router(video_assets_internal.router, prefix="/api/v1", tags=["Video Assets Internal"])
 app.include_router(content_likes.router, prefix="/api/v1", tags=["Content Likes"])
 app.include_router(watch_history.router, prefix="/api/v1", tags=["Watch History"])
 app.include_router(video_assets.router, prefix="/api/v1", tags=["Video Assets"])
 app.include_router(search.router, prefix="/api/v1", tags=["Search"])
+app.include_router(videos.router, prefix="/api/v1", tags=["Videos"])
 
 
 @app.get("/")

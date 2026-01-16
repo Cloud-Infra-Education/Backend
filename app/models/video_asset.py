@@ -15,6 +15,7 @@ class VideoAsset(Base):
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     content_id = Column(Integer, ForeignKey("contents.id", ondelete="CASCADE"), nullable=False, index=True)
     video_url = Column(String(500), nullable=False)
+    thumbnail_url = Column(String(500), nullable=True)  # 썸네일 URL
     duration = Column(Float, nullable=True)  # 초 단위
     resolution = Column(String(20), nullable=True)  # 예: "1080p", "720p", "4K"
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
