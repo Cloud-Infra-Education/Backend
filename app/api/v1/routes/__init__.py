@@ -1,6 +1,18 @@
 """
 API routes
 """
-from app.api.v1.routes import health, users, auth
+from . import health, users, auth, contents, content_likes, watch_history, video_assets, contents_internal, videos, video_assets_internal, search
 
-__all__ = ["health", "users", "auth"]
+__all__ = [
+    "health",
+    "users",
+    "auth",
+    "contents",
+    "content_likes",
+    "watch_history",
+    "video_assets",
+    "contents_internal",
+    "videos",
+    "video_assets_internal",
+    "search",
+]
