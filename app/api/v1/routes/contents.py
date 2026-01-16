@@ -6,7 +6,7 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from app.core.database import get_db
-from app.core.security import security, verify_token
+from app.core.security import security, verify_token, verify_token_optional, verify_internal_token
 from fastapi.security import HTTPAuthorizationCredentials
 from app.models.content import Content
 from app.schemas.content import ContentCreate, ContentUpdate, ContentResponse
@@ -18,7 +18,7 @@ router = APIRouter(prefix="/contents", tags=["Contents"])
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security)
 ):
-    """현재 사용자 정보 추출"""
+    """현재 사용자 정보 추출 (Keycloak 토큰)"""
     return await verify_token(credentials)
 
 
@@ -26,7 +26,7 @@ async def get_current_user(
 async def create_content(
     content_data: ContentCreate,
     db: Session = Depends(get_db),
-    current_user = Depends(get_current_user)
+    current_user = Depends(verify_token_optional)  # Keycloak 또는 내부 토큰 허용
 ):
     """컨텐츠 생성"""
     db_content = Content(
@@ -84,7 +84,7 @@ async def update_content(
     content_id: int,
     content_data: ContentUpdate,
     db: Session = Depends(get_db),
-    current_user = Depends(get_current_user)
+    current_user = Depends(verify_token_optional)  # Keycloak 또는 내부 토큰 허용
 ):
     """컨텐츠 수정"""
     content = db.query(Content).filter(Content.id == content_id).first()
@@ -122,7 +122,7 @@ async def update_content(
 async def delete_content(
     content_id: int,
     db: Session = Depends(get_db),
-    current_user = Depends(get_current_user)
+    current_user = Depends(verify_token_optional)  # Keycloak 또는 내부 토큰 허용
 ):
     """컨텐츠 삭제"""
     content = db.query(Content).filter(Content.id == content_id).first()
