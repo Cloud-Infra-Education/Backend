@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - "feat/#*"
   workflow_dispatch:
 
 permissions:
@@ -15,6 +14,7 @@ env:
   AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
   ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
   IMAGE_TAG: ${{ github.sha }}
+  MANIFEST_REPO: yuuheeee/Manifests
 
 jobs:
   build-push-and-update:
@@ -95,3 +95,44 @@ jobs:
         if: steps.check-video.outputs.exists == 'true'
         run: docker push ${ECR_REGISTRY}/video-service:${IMAGE_TAG}
 
+      - name: Update Manifest Repository (backend-api)
+        if: steps.check-backend.outputs.exists == 'true'
+        env:
+          MANIFEST_TOKEN: ${{ secrets.MANIFEST_REPO }}
+        run: |
+          # Manifest Repo 클론
+          git clone https://${MANIFEST_TOKEN}@github.com/${{ env.MANIFEST_REPO }}.git
+          cd Manifests
+          
+          # Git 설정
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # backend-api 이미지 태그 업데이트 (user-service 폴더)
+          sed -i "s|image: ${ECR_REGISTRY}/backend-api:.*|image: ${ECR_REGISTRY}/backend-api:${IMAGE_TAG}|g" base/user-service/deployment.yaml
+          
+          # 변경사항 커밋 & 푸시
+          git add .
+          git commit -m "Update backend-api image to ${IMAGE_TAG}" || echo "No changes to commit"
+          git push origin main
+
+      - name: Update Manifest Repository (video-service)
+        if: steps.check-video.outputs.exists == 'true'
+        env:
+          MANIFEST_TOKEN: ${{ secrets.MANIFEST_REPO }}
+        run: |
+          # Manifest Repo 클론
+          git clone https://${MANIFEST_TOKEN}@github.com/${{ env.MANIFEST_REPO }}.git
+          cd Manifests
+          
+          # Git 설정
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # video-service 이미지 태그 업데이트 (user-service 폴더)
+          sed -i "s|image: ${ECR_REGISTRY}/video-service:.*|image: ${ECR_REGISTRY}/video-service:${IMAGE_TAG}|g" base/user-service/deployment.yaml
+          
+          # 변경사항 커밋 & 푸시
+          git add .
+          git commit -m "Update video-service image to ${IMAGE_TAG}" || echo "No changes to commit"
+          git push origin main
