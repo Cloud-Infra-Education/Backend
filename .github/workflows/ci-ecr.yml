@@ -41,7 +41,7 @@ jobs:
 
       - name: Build (backend-api)
         if: steps.check-backend.outputs.exists == 'true'
-        run: docker build -t ${ECR_REGISTRY}/backend-api:${IMAGE_TAG} -t ${ECR_REGISTRY}/backend-api:latest .
+        run: docker build -t ${ECR_REGISTRY}/backend-api:${IMAGE_TAG} .
 
       - name: Trivy Scan (backend-api)
         if: steps.check-backend.outputs.exists == 'true'
@@ -54,6 +54,15 @@ jobs:
           scanners: 'vuln'
           trivyignores: '.trivyignore'
         continue-on-error: true
+
+      - name: Delete existing latest tag if exists
+        if: steps.check-backend.outputs.exists == 'true'
+        continue-on-error: true
+        run: aws ecr batch-delete-image --repository-name backend-api --image-ids imageTag=latest --region ${AWS_REGION} || echo "No latest tag to delete"
+
+      - name: Build latest tag
+        if: steps.check-backend.outputs.exists == 'true'
+        run: docker tag ${ECR_REGISTRY}/backend-api:${IMAGE_TAG} ${ECR_REGISTRY}/backend-api:latest
 
       - name: Push (backend-api)
         if: steps.check-backend.outputs.exists == 'true'
@@ -85,3 +94,4 @@ jobs:
       - name: Push (video-service)
         if: steps.check-video.outputs.exists == 'true'
         run: docker push ${ECR_REGISTRY}/video-service:${IMAGE_TAG}
+
