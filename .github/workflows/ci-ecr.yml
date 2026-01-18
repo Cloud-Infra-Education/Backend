@@ -38,7 +38,7 @@ jobs:
 
       - name: Build (backend-api)
         if: steps.check-backend.outputs.exists == 'true'
-        run: docker build -t $ECR_REGISTRY/backend-api:${IMAGE_TAG} -t $ECR_REGISTRY/backend-api:latest .
+        run: docker build -t ${ECR_REGISTRY}/backend-api:${IMAGE_TAG} -t ${ECR_REGISTRY}/backend-api:latest .
 
       - name: Trivy Scan (backend-api)
         if: steps.check-backend.outputs.exists == 'true'
@@ -55,8 +55,8 @@ jobs:
       - name: Push (backend-api)
         if: steps.check-backend.outputs.exists == 'true'
         run: |
-          docker push $ECR_REGISTRY/backend-api:${IMAGE_TAG}
-          docker push $ECR_REGISTRY/backend-api:latest
+          docker push ${ECR_REGISTRY}/backend-api:${IMAGE_TAG}
+          docker push ${ECR_REGISTRY}/backend-api:latest
 
       - name: Check video-service repo
         id: check-video
@@ -65,7 +65,7 @@ jobs:
 
       - name: Build (video-service)
         if: steps.check-video.outputs.exists == 'true'
-        run: docker build -t $ECR_REGISTRY/video-service:${IMAGE_TAG} ./app/video-service
+        run: docker build -t ${ECR_REGISTRY}/video-service:${IMAGE_TAG} ./app/video-service
 
       - name: Trivy Scan (video-service)
         if: steps.check-video.outputs.exists == 'true'
@@ -81,4 +81,4 @@ jobs:
 
       - name: Push (video-service)
         if: steps.check-video.outputs.exists == 'true'
-        run: docker push $ECR_REGISTRY/video-service:${IMAGE_TAG}
+        run: docker push ${ECR_REGISTRY}/video-service:${IMAGE_TAG}
