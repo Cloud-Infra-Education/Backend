@@ -1,4 +1,4 @@
-name: CI - 백엔드 API 배포
+name: CI - 백엔드 API 및 User Service 배포
 
 on:
   push:
@@ -71,8 +71,44 @@ jobs:
           docker push ${ECR_REGISTRY}/backend-api:${IMAGE_TAG}
           docker push ${ECR_REGISTRY}/backend-api:latest
 
-      - name: Update Manifest Repository (backend-api)
-        if: steps.check-backend.outputs.exists == 'true'
+      - name: Check user-service repo
+        id: check-user-service
+        continue-on-error: true
+        run: aws ecr describe-repositories --repository-names user-service > /dev/null 2>&1 && echo "exists=true" >> $GITHUB_OUTPUT || echo "exists=false" >> $GITHUB_OUTPUT
+
+      - name: Build (user-service)
+        if: steps.check-user-service.outputs.exists == 'true'
+        run: docker build -t ${ECR_REGISTRY}/user-service:${IMAGE_TAG} .
+
+      - name: Trivy Scan (user-service)
+        if: steps.check-user-service.outputs.exists == 'true'
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.ECR_REGISTRY }}/user-service:${{ env.IMAGE_TAG }}
+          format: 'table'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '0'
+          scanners: 'vuln'
+          trivyignores: '.trivyignore'
+        continue-on-error: true
+
+      - name: Delete existing latest tag if exists (user-service)
+        if: steps.check-user-service.outputs.exists == 'true'
+        continue-on-error: true
+        run: aws ecr batch-delete-image --repository-name user-service --image-ids imageTag=latest --region ${AWS_REGION} || echo "No latest tag to delete"
+
+      - name: Build latest tag (user-service)
+        if: steps.check-user-service.outputs.exists == 'true'
+        run: docker tag ${ECR_REGISTRY}/user-service:${IMAGE_TAG} ${ECR_REGISTRY}/user-service:latest
+
+      - name: Push (user-service)
+        if: steps.check-user-service.outputs.exists == 'true'
+        run: |
+          docker push ${ECR_REGISTRY}/user-service:${IMAGE_TAG}
+          docker push ${ECR_REGISTRY}/user-service:latest
+
+      - name: Update Manifest Repository
+        if: steps.check-backend.outputs.exists == 'true' || steps.check-user-service.outputs.exists == 'true'
         env:
           MANIFEST_TOKEN: ${{ secrets.MANIFEST_REPO_TOKEN }}
           ECR_REGISTRY: ${{ env.ECR_REGISTRY }}
@@ -87,11 +123,26 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           
           # backend-api 이미지 태그 업데이트
-          sed -i "s|image: ${ECR_REGISTRY}/backend-api:.*|image: ${ECR_REGISTRY}/backend-api:${IMAGE_TAG}|g" base/backend-api/deployment.yaml
+          if [ "${{ steps.check-backend.outputs.exists }}" == "true" ]; then
+            sed -i "s|image: ${ECR_REGISTRY}/backend-api:.*|image: ${ECR_REGISTRY}/backend-api:${IMAGE_TAG}|g" base/backend-api/deployment.yaml
+          fi
+          
+          # user-service 이미지 태그 업데이트
+          if [ "${{ steps.check-user-service.outputs.exists }}" == "true" ]; then
+            sed -i "s|image: ${ECR_REGISTRY}/user-service:.*|image: ${ECR_REGISTRY}/user-service:${IMAGE_TAG}|g" base/user-service/deployment.yaml
+          fi
           
           # 변경사항 커밋 & 푸시
           git add .
-          git commit -m "Update backend-api image to ${IMAGE_TAG}" || echo "No changes to commit"
+          COMMIT_MSG="Update images to ${IMAGE_TAG}"
+          if [ "${{ steps.check-backend.outputs.exists }}" == "true" ] && [ "${{ steps.check-user-service.outputs.exists }}" == "true" ]; then
+            COMMIT_MSG="Update backend-api and user-service images to ${IMAGE_TAG}"
+          elif [ "${{ steps.check-backend.outputs.exists }}" == "true" ]; then
+            COMMIT_MSG="Update backend-api image to ${IMAGE_TAG}"
+          elif [ "${{ steps.check-user-service.outputs.exists }}" == "true" ]; then
+            COMMIT_MSG="Update user-service image to ${IMAGE_TAG}"
+          fi
+          git commit -m "${COMMIT_MSG}" || echo "No changes to commit"
           git push origin main
 
 
