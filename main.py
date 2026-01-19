@@ -98,6 +98,68 @@ async def root():
     }
 
 
+# Keycloak 프록시 엔드포인트
+from fastapi import Request, HTTPException
+from fastapi.responses import Response
+import httpx
+
+@app.api_route("/keycloak/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
+async def keycloak_proxy(request: Request, path: str):
+    """Keycloak 요청을 실제 Keycloak 서비스로 프록시"""
+    try:
+        # Keycloak 서비스 URL (Kubernetes 내부 서비스)
+        keycloak_url = "http://keycloak-service.formation-lap.svc.cluster.local:8080"
+        target_url = f"{keycloak_url}/{path}"
+        
+        # 쿼리 파라미터 포함
+        if request.url.query:
+            target_url += f"?{request.url.query}"
+        
+        # 요청 헤더 복사 (Host 헤더 제외)
+        headers = dict(request.headers)
+        headers.pop("host", None)
+        
+        # 요청 본문 읽기
+        body = await request.body()
+        
+        # Keycloak으로 요청 프록시
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.request(
+                method=request.method,
+                url=target_url,
+                headers=headers,
+                content=body
+            )
+        
+        # 응답 헤더 복사 (일부 제외)
+        response_headers = dict(response.headers)
+        excluded_headers = ["content-encoding", "content-length", "transfer-encoding", "connection"]
+        for header in excluded_headers:
+            response_headers.pop(header, None)
+        
+        return Response(
+            content=response.content,
+            status_code=response.status_code,
+            headers=response_headers,
+            media_type=response.headers.get("content-type")
+        )
+        
+    except httpx.RequestError as e:
+        # Keycloak 서비스에 연결할 수 없는 경우
+        return Response(
+            content=f"Keycloak service unavailable: {str(e)}",
+            status_code=503,
+            media_type="text/plain"
+        )
+    except Exception as e:
+        # 기타 오류
+        return Response(
+            content=f"Proxy error: {str(e)}",
+            status_code=500,
+            media_type="text/plain"
+        )
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(

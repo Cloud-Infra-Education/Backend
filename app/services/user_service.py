@@ -72,13 +72,17 @@ class UserService:
                 detail="Email already registered"
             )
         
-        # Keycloak에 사용자 생성 (선택적 - 실패해도 계속 진행)
+        # Keycloak에 사용자 생성 (필수 - 실패 시 회원가입도 실패)
         keycloak_user_id = None
         try:
             keycloak_user_id = await UserService._create_keycloak_user(user_data)
         except Exception as e:
-            # Keycloak이 없거나 접근 불가능한 경우 경고만 출력하고 계속 진행
-            print(f"⚠️  Keycloak 사용자 생성 실패 (무시하고 계속 진행): {str(e)}")
+            error_msg = str(e)
+            print(f"❌ Keycloak 사용자 생성 실패: {error_msg}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to create user in authentication server: {error_msg}"
+            )
         
         # 데이터베이스에 사용자 생성
         hashed_password = UserService.hash_password(user_data.password)
@@ -129,11 +133,9 @@ class UserService:
             }]
         }
         
-        # firstName과 lastName 추가 (Keycloak에서 필요)
-        if user_data.first_name:
-            user_payload["firstName"] = user_data.first_name
-        if user_data.last_name:
-            user_payload["lastName"] = user_data.last_name
+        # firstName과 lastName 추가 (Keycloak에서 필수 - 없으면 기본값 사용)
+        user_payload["firstName"] = user_data.first_name if user_data.first_name else "User"
+        user_payload["lastName"] = user_data.last_name if user_data.last_name else "Member"
         
         async with httpx.AsyncClient() as client:
             response = await client.post(
