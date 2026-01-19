@@ -92,20 +92,46 @@ jobs:
           trivyignores: '.trivyignore'
         continue-on-error: true
 
-      - name: Delete existing v4 tag if exists (user-service)
+      - name: Delete existing latest tag if exists (user-service)
         if: steps.check-user-service.outputs.exists == 'true'
         continue-on-error: true
-        run: aws ecr batch-delete-image --repository-name user-service --image-ids imageTag=v4 --region ${AWS_REGION} || echo "No v4 tag to delete"
+        run: aws ecr batch-delete-image --repository-name user-service --image-ids imageTag=latest --region ${AWS_REGION} || echo "No latest tag to delete"
 
-      - name: Build v4 tag (user-service)
+      - name: Build latest tag (user-service)
         if: steps.check-user-service.outputs.exists == 'true'
-        run: docker tag ${ECR_REGISTRY}/user-service:${IMAGE_TAG} ${ECR_REGISTRY}/user-service:v4
+        run: docker tag ${ECR_REGISTRY}/user-service:${IMAGE_TAG} ${ECR_REGISTRY}/user-service:latest
 
       - name: Push (user-service)
         if: steps.check-user-service.outputs.exists == 'true'
         run: |
           docker push ${ECR_REGISTRY}/user-service:${IMAGE_TAG}
-          docker push ${ECR_REGISTRY}/user-service:v4
+          docker push ${ECR_REGISTRY}/user-service:latest
+
+      - name: Build alert-service Lambda (using user-service repo)
+        if: steps.check-user-service.outputs.exists == 'true'
+        working-directory: ./lambda/alert-service
+        run: docker build -t ${ECR_REGISTRY}/user-service:alert-v1 .
+
+      - name: Trivy Scan (alert-service)
+        if: steps.check-user-service.outputs.exists == 'true'
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.ECR_REGISTRY }}/user-service:alert-v1
+          format: 'table'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '0'
+          scanners: 'vuln'
+          trivyignores: '.trivyignore'
+        continue-on-error: true
+
+      - name: Delete existing alert-v1 tag if exists
+        if: steps.check-user-service.outputs.exists == 'true'
+        continue-on-error: true
+        run: aws ecr batch-delete-image --repository-name user-service --image-ids imageTag=alert-v1 --region ${AWS_REGION} || echo "No alert-v1 tag to delete"
+
+      - name: Push (alert-service as alert-v1)
+        if: steps.check-user-service.outputs.exists == 'true'
+        run: docker push ${ECR_REGISTRY}/user-service:alert-v1
 
       - name: Update Manifest Repository
         if: steps.check-backend.outputs.exists == 'true' || steps.check-user-service.outputs.exists == 'true'
@@ -130,15 +156,50 @@ jobs:
             COMMIT_MESSAGE="${COMMIT_MESSAGE}Update backend-api image to ${IMAGE_TAG}; "
           fi
           
-          # user-service 이미지 태그 업데이트
+          # user-service 이미지 태그 업데이트 (latest 태그 사용)
           if [ "${{ steps.check-user-service.outputs.exists }}" == "true" ]; then
-            sed -i "s|image: ${ECR_REGISTRY}/user-service:.*|image: ${ECR_REGISTRY}/user-service:v4|g" base/user-service/deployment.yaml
-            COMMIT_MESSAGE="${COMMIT_MESSAGE}Update user-service image to ${IMAGE_TAG}"
+            sed -i "s|image: ${ECR_REGISTRY}/user-service:.*|image: ${ECR_REGISTRY}/user-service:latest|g" base/user-service/deployment.yaml
+            COMMIT_MESSAGE="${COMMIT_MESSAGE}Update user-service image to latest"
           fi
+          
+          # Placeholder 값 자동 채우기
+          # AWS Account ID
+          sed -i "s|<AWS_ACCOUNT_ID>|${AWS_ACCOUNT_ID}|g" base/backend-api/deployment.yaml
+          sed -i "s|<AWS_ACCOUNT_ID>|${AWS_ACCOUNT_ID}|g" base/user-service/deployment.yaml
+          sed -i "s|<AWS_ACCOUNT_ID>|${AWS_ACCOUNT_ID}|g" base/backend-api/serviceaccount.yaml
+          sed -i "s|<AWS_ACCOUNT_ID>|${AWS_ACCOUNT_ID}|g" seoul/kustomization.yaml
+          
+          # Team 이름 (OUR_TEAM) - GitHub Secrets 또는 기본값 사용
+          OUR_TEAM="${OUR_TEAM:-formation-lap}"
+          sed -i "s|<OUR_TEAM>|${OUR_TEAM}|g" base/backend-api/serviceaccount.yaml
+          
+          # Ingress 설정 - AWS CLI로 자동 조회 또는 GitHub Secrets 사용
+          # WAF ARN 조회 (Seoul 리전)
+          if [ -z "${{ secrets.WAF_WEB_ACL_ARN }}" ]; then
+            WAF_ARN=$(aws wafv2 list-web-acls --scope REGIONAL --region ${AWS_REGION} --query "WebACLs[?contains(Name, 'seoul') || contains(Name, 'Seoul')].ARN" --output text | head -n 1)
+            if [ -n "$WAF_ARN" ]; then
+              sed -i "s|<WAF_WEB_ACL_ARN>|${WAF_ARN}|g" base/ingress.yaml
+            fi
+          else
+            sed -i "s|<WAF_WEB_ACL_ARN>|${{ secrets.WAF_WEB_ACL_ARN }}|g" base/ingress.yaml
+          fi
+          
+          # ACM 인증서 ARN 조회 (Seoul 리전, api 서브도메인)
+          if [ -z "${{ secrets.ACM_CERTIFICATE_ARN }}" ]; then
+            ACM_ARN=$(aws acm list-certificates --region ${AWS_REGION} --query "CertificateSummaryList[?contains(DomainName, 'api')].CertificateArn" --output text | head -n 1)
+            if [ -n "$ACM_ARN" ]; then
+              sed -i "s|<ACM_CERTIFICATE_ARN>|${ACM_ARN}|g" base/ingress.yaml
+            fi
+          else
+            sed -i "s|<ACM_CERTIFICATE_ARN>|${{ secrets.ACM_CERTIFICATE_ARN }}|g" base/ingress.yaml
+          fi
+          
+          # ALB 이름 (기본값 또는 GitHub Secrets)
+          ALB_NAME="${ALB_NAME:-matchacake-alb-test-seoul}"
+          sed -i "s|<ALB_NAME>|${ALB_NAME}|g" base/ingress.yaml
           
           # 변경사항 커밋 & 푸시
           git add .
           git commit -m "${COMMIT_MESSAGE}" || echo "No changes to commit"
           git push origin main
-
 

@@ -10,7 +10,8 @@ logger.setLevel(logging.INFO)
 
 def get_slack_webhook():
     secret_name = os.environ.get('SECRET_NAME', 'slack/webhook')
-    client = boto3.client('secretsmanager', region_name="ap-northeast-2")
+    aws_region = os.environ.get('AWS_REGION', 'ap-northeast-2')
+    client = boto3.client('secretsmanager', region_name=aws_region)
     try:
         response = client.get_secret_value(SecretId=secret_name)
         return json.loads(response['SecretString']).get('webhook_url')
@@ -33,17 +34,18 @@ def handler(event, context):
         metric_name = trigger.get('MetricName')
         threshold = trigger.get('Threshold')
         
+        # ⭐ 수정: 메트릭 타입에 따른 이모지 및 리소스 타입 설정
         if 'RDS' in alarm_name or 'Aurora' in alarm_name:
-            resource_type = "RDS Aurora"
+            resource_type = "🗄️ RDS Aurora"
         elif 'EKS' in alarm_name or 'Container' in alarm_name:
-            resource_type = "EKS Cluster"
+            resource_type = "☸️ EKS Cluster"
         else:
-            resource_type = "인프라"
+            resource_type = "⚠️ 인프라"
 
         # 한국 시간 변환 (KST)
         kst_time = (datetime.now() + timedelta(hours=9)).strftime('%Y-%m-%d %H:%M:%S KST')
 
-        color = "#eb4034" if new_state == "ALARM" else "#2eb886"
+        color = "#eb4034" if new_state == "ALARM" else "#2eb886" # 위험(빨강) / 복구(초록)
         emoji = "🚨" if new_state == "ALARM" else "✅"
 
         slack_payload = {
