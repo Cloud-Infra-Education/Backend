@@ -86,8 +86,8 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           
-          # 브랜치 확인 및 체크아웃 (main 또는 feat/#9)
-          git checkout main || git checkout feat/#9
+          # 브랜치 확인 및 체크아웃 (fix/#11)
+          git checkout fix/#11 || git checkout main || git checkout feat/#9
           
           # latest 태그 사용 시에도 ArgoCD가 배포하도록 Git 커밋 생성
           # seoul/kustomization.yaml에 주석 추가 (항상 변경되도록)
@@ -101,6 +101,7 @@ jobs:
           # 변경사항 커밋 & 푸시
           git add seoul/kustomization.yaml
           git commit -m "Auto-update: backend-api latest image (${IMAGE_TAG})" || echo "No changes to commit"
-          git push origin main || git push origin feat/#9
+          CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+          git push origin ${CURRENT_BRANCH} || git push origin fix/#11 || git push origin main || git push origin feat/#9
 
 
