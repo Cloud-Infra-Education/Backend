@@ -86,12 +86,21 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           
-          # backend-api 이미지 태그 업데이트
-          sed -i "s|image: ${ECR_REGISTRY}/backend-api:.*|image: ${ECR_REGISTRY}/backend-api:${IMAGE_TAG}|g" base/backend-api/deployment.yaml
+          # 브랜치 확인 및 체크아웃 (main 또는 feat/#9)
+          git checkout main || git checkout feat/#9
+          
+          # latest 태그 사용 시에도 ArgoCD가 배포하도록 Git 커밋 생성
+          # seoul/kustomization.yaml에 주석 추가 (항상 변경되도록)
+          TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          if grep -q "# Last updated:" seoul/kustomization.yaml; then
+            sed -i "s|# Last updated:.*|# Last updated: ${TIMESTAMP} (${IMAGE_TAG})|g" seoul/kustomization.yaml
+          else
+            sed -i "1a# Last updated: ${TIMESTAMP} (${IMAGE_TAG})" seoul/kustomization.yaml
+          fi
           
           # 변경사항 커밋 & 푸시
-          git add .
-          git commit -m "Update backend-api image to ${IMAGE_TAG}" || echo "No changes to commit"
-          git push origin main
+          git add seoul/kustomization.yaml
+          git commit -m "Auto-update: backend-api latest image (${IMAGE_TAG})" || echo "No changes to commit"
+          git push origin main || git push origin feat/#9
 
 
