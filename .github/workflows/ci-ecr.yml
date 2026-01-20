@@ -86,8 +86,34 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           
-          # 브랜치 확인 및 체크아웃 (fix/#11)
-          git checkout fix/#11 || git checkout main || git checkout feat/#9
+          # 브랜치 자동 감지 및 체크아웃
+          # 현재 Backend 브랜치 이름을 기반으로 Manifests 브랜치 찾기
+          BACKEND_BRANCH="${{ github.ref_name }}"
+          
+          # 원격 브랜치 정보 가져오기
+          git fetch origin
+          
+          # 브랜치 이름 매핑 (Backend 브랜치 → Manifests 브랜치)
+          # 기본값: 현재 브랜치 이름 그대로 사용
+          MANIFEST_BRANCH="${BACKEND_BRANCH}"
+          
+          # 브랜치 존재 여부 확인 및 체크아웃
+          if git show-ref --verify --quiet refs/remotes/origin/${MANIFEST_BRANCH}; then
+            # 원격 브랜치가 있으면 체크아웃
+            git checkout -b ${MANIFEST_BRANCH} origin/${MANIFEST_BRANCH} || git checkout ${MANIFEST_BRANCH}
+          elif git show-ref --verify --quiet refs/heads/${MANIFEST_BRANCH}; then
+            # 로컬 브랜치가 있으면 체크아웃
+            git checkout ${MANIFEST_BRANCH}
+          else
+            # 브랜치가 없으면 기본 브랜치 사용 (main 또는 기본 브랜치)
+            DEFAULT_BRANCH=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@' || echo "main")
+            echo "브랜치 ${MANIFEST_BRANCH}를 찾을 수 없어 기본 브랜치 ${DEFAULT_BRANCH}를 사용합니다."
+            git checkout ${DEFAULT_BRANCH} || git checkout main || git checkout master
+          fi
+          
+          # 최종 브랜치 확인
+          FINAL_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+          echo "체크아웃된 브랜치: ${FINAL_BRANCH}"
           
           # latest 태그 사용 시에도 ArgoCD가 배포하도록 Git 커밋 생성
           # seoul/kustomization.yaml에 주석 추가 (항상 변경되도록)
@@ -102,6 +128,7 @@ jobs:
           git add seoul/kustomization.yaml
           git commit -m "Auto-update: backend-api latest image (${IMAGE_TAG})" || echo "No changes to commit"
           CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
-          git push origin ${CURRENT_BRANCH} || git push origin fix/#11 || git push origin main || git push origin feat/#9
+          # 현재 체크아웃된 브랜치로 자동 푸시
+          git push origin ${CURRENT_BRANCH}
 
 
