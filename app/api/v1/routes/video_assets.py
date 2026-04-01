@@ -6,7 +6,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from app.core.database import get_db
-from app.core.security import security, verify_token
+from app.core.security import security, verify_token, verify_token_optional
 from fastapi.security import HTTPAuthorizationCredentials
 from app.models.video_asset import VideoAsset
 from app.models.content import Content
@@ -19,7 +19,7 @@ router = APIRouter(prefix="/contents/{content_id}/video-assets", tags=["Video As
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security)
 ):
-    """현재 사용자 정보 추출"""
+    """현재 사용자 정보 추출 (Keycloak 토큰)"""
     return await verify_token(credentials)
 
 
@@ -28,7 +28,7 @@ async def create_video_asset(
     content_id: int,
     asset_data: VideoAssetCreate,
     db: Session = Depends(get_db),
-    current_user = Depends(get_current_user)
+    current_user = Depends(verify_token_optional)  # Keycloak 또는 내부 토큰 허용
 ):
     """영상 파일 정보 생성"""
     # 컨텐츠 존재 확인
@@ -49,8 +49,8 @@ async def create_video_asset(
     db_asset = VideoAsset(
         content_id=asset_data.content_id,
         video_url=asset_data.video_url,
-        duration=asset_data.duration,
-        resolution=asset_data.resolution
+        thumbnail_url=asset_data.thumbnail_url,
+        duration=asset_data.duration
     )
     db.add(db_asset)
     db.commit()
@@ -95,7 +95,7 @@ async def update_video_asset(
     asset_id: int,
     asset_data: VideoAssetUpdate,
     db: Session = Depends(get_db),
-    current_user = Depends(get_current_user)
+    current_user = Depends(verify_token_optional)  # Keycloak 또는 내부 토큰 허용
 ):
     """영상 파일 정보 수정"""
     asset = db.query(VideoAsset).filter(
@@ -111,10 +111,10 @@ async def update_video_asset(
     
     if asset_data.video_url is not None:
         asset.video_url = asset_data.video_url
+    if asset_data.thumbnail_url is not None:
+        asset.thumbnail_url = asset_data.thumbnail_url
     if asset_data.duration is not None:
         asset.duration = asset_data.duration
-    if asset_data.resolution is not None:
-        asset.resolution = asset_data.resolution
     
     db.commit()
     db.refresh(asset)
@@ -126,7 +126,7 @@ async def delete_video_asset(
     content_id: int,
     asset_id: int,
     db: Session = Depends(get_db),
-    current_user = Depends(get_current_user)
+    current_user = Depends(verify_token_optional)  # Keycloak 또는 내부 토큰 허용
 ):
     """영상 파일 정보 삭제"""
     asset = db.query(VideoAsset).filter(
